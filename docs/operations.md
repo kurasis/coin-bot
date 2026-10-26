@@ -4,7 +4,7 @@ This is an implementation/runbook, not evidence that production or off-host stor
 
 ## Runtime and deployment
 
-Use the pinned PHP 8.5 image produced by `bin/build` and install locked dependencies before deployment. No Node, Redis, public webhook listener, or public web server is required for the notification workers. Keep `.env` outside source control with mode `0600`; preserve `APP_KEY` in secure operator-managed storage separately from encrypted backups. SQLite storage must be local to one active host.
+For native PHP 8.5/systemd installation, use the [Debian 13 guide](deploy-debian13.md). The optional container deployment below uses the pinned PHP 8.5 image produced by `bin/build`. Install locked dependencies before either deployment. No Node, Redis, public webhook listener, or public web server is required for the notification workers. Keep `.env` outside source control with mode `0600`; preserve `APP_KEY` in secure operator-managed storage separately from encrypted backups. SQLite storage must be local to one active host. If a website is enabled, apply the [Telegram-only access policy](telegram-only-website.md).
 
 `deploy/compose.yaml` mounts application files read-only and keeps database, storage, and generated bootstrap cache in local named volumes. Workers run as the configured unprivileged UID/GID. The one-time `prepare` service creates/chowns the persistent directories, then `migrate` applies migrations before worker startup. The checkout must already contain installed `vendor` dependencies and a valid environment file.
 

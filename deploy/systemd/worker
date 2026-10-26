@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+case "${1:-}" in
+  ethereum) set -- chain:scan ethereum ;;
+  tron) set -- chain:scan tron ;;
+  telegram-updates) set -- telegram:poll ;;
+  telegram-delivery) set -- telegram:deliver ;;
+  backfill) set -- wallet:backfill-run ;;
+  reconcile-ethereum) set -- chain:reconcile ethereum ;;
+  reconcile-tron) set -- chain:reconcile tron ;;
+  backups) set -- ops:backup --loop --interval=60 ;;
+  *) echo 'Unknown Coin Bot worker instance.' >&2; exit 64 ;;
+esac
+
+exec /usr/bin/php8.5 /srv/coin-bot/artisan "$@"

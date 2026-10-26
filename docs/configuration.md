@@ -13,6 +13,8 @@ Copy `.env.example` through `bin/setup` and supply any future credentials throug
 | `config/reconciliation.php` | Persistent circuit cooldowns, repeat-scan interval, and per-chain overlap windows |
 | `config/operations.php` | Backup/state locations, retention, lag/health thresholds, and required workers |
 | `deploy/compose.yaml` | Optional future process supervision and local persistent volumes; not automatically launched |
+| `deploy/systemd/` | Native Debian worker supervision, fixed worker commands, and restricted writable paths |
+| `deploy/nginx/`, `deploy/php-fpm/` | Optional Telegram-source-only HTTPS website and private application FPM pool |
 
 ## Provider settings
 
@@ -40,5 +42,7 @@ Bot credentials are `TELEGRAM_BOT_TOKEN`; `TELEGRAM_STAGING_CHAT_ID` only record
 `.env.example` documents the supported bot/access/circuit/health settings with safe empty credential values. Per-provider optional tuning suffixes are listed above rather than duplicated four times in the example. CLI worker interval/range flags are discoverable with `php artisan <command> --help`; they do not start merely because configuration is present.
 
 For optional future Compose deployment, set `COIN_BOT_BACKUP_PATH` to a protected verified off-host backup mount and choose `COIN_BOT_UID/GID`. Keep `APP_KEY` separately and securely backed up; a proxy placeholder cannot replace a raw local encryption key. Production settings are not needed to run offline tests. See [operations](operations.md) for enrollment bootstrap, supervision, health, and fenced restore.
+
+For native deployment, use the [Debian 13 guide](deploy-debian13.md): the database is `/var/lib/coin-bot/database.sqlite`, encrypted backups use `/mnt/coin-bot-backups`, and Laravel reads the private `.env` directly. Container-specific `COIN_BOT_UID/GID/BACKUP_PATH` settings are unused. Optional web access uses Nginx source-IP rules; it does not introduce Telegram webhooks.
 
 Cloud environment draft settings contain installation/start instructions and future integration requirements. Saving those declarations neither supplies values nor launches processes; the development snapshot is separate from production deployment.

@@ -1,0 +1,31 @@
+[Unit]
+Description=Coin Bot worker (%i)
+Wants=network-online.target
+After=network-online.target
+PartOf=coin-bot.target
+RequiresMountsFor=/var/lib/coin-bot /mnt/coin-bot-backups
+AssertPathIsMountPoint=/mnt/coin-bot-backups
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=coin-bot
+Group=coin-bot
+WorkingDirectory=/srv/coin-bot
+Environment=APP_ENV=production APP_DEBUG=false
+ExecStart=/srv/coin-bot/deploy/systemd/worker %i
+Restart=always
+RestartSec=5
+KillMode=control-group
+TimeoutStopSec=45
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/coin-bot /srv/coin-bot/storage /srv/coin-bot/bootstrap/cache /mnt/coin-bot-backups
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
