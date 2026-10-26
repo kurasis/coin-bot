@@ -32,3 +32,10 @@ All results below were obtained on PHP 8.5.12 / Laravel 13.38.0 on 2026-10-26. P
 - Actual paid primary/secondary account credentials, retained history depth, quota, and recovery headroom are not configured or certified. Public endpoints are proof of implementation, not production SLA/plan evidence. See [provider capabilities](provider-capabilities.md).
 
 P04 follow-up: added read-only `chain:probe` with mandatory address filters, bounded numeric ranges, network/finality checks, receipt samples, and safe JSON output. Combined client/probe suites passed 26 tests / 62 assertions. It does not write wallets, transfers, or messages.
+
+## P05-P07 - Complete implementation and mainnet verification
+
+- Durable range scanner, full-receipt event decoder, active-grant/destination routing, atomic ledger/outbox/coverage transactions, CAS watch-set safety, overlap deduplication, and bounded result splitting are implemented.
+- Monitoring suite: 21 tests / 73 assertions passed, including injected SQLite write failure, missing receipts, exact repeated logs, zero/max amounts, shared destinations, chain independence, and native TRON receipt fallback.
+- Live full Laravel-to-RPC-to-SQLite probes used disposable databases without subscriptions: Ethereum 26,278,475-26,278,477 yielded 2 expected/verified stored transfers from 296 official-USDT logs; TRON 87,454,942-87,454,944 yielded 1 expected/verified stored transfer from 201 logs. Coverage advanced exactly over each three-block range.
+- No Telegram messages were sent. Paid-provider certification remains the independent P04 gate.

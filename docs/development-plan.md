@@ -20,9 +20,9 @@ Missing production credentials do not block fixture-based implementation. They d
 | P02 | Multi-user domain and persistence | Isolated ownership, ledger, cursors, and outbox schema | P01 | done |
 | P03 | Individual access keys | Issuance, single-use activation, expiry, and revocation | P02 | done |
 | P04 | RPC adapters and provider capabilities | Validated chain clients and capability matrix | P01, P02 | blocked |
-| P05 | Durable scanning engine | Atomic range processing and resumable coverage | P02, P04 | planned |
-| P06 | Ethereum USDT monitoring | Finalized Ethereum ingestion | P05 | planned |
-| P07 | TRON USDT monitoring | Solidified TRON ingestion and native fallback | P05 | planned |
+| P05 | Durable scanning engine | Atomic range processing and resumable coverage | P02, P04 | done |
+| P06 | Ethereum USDT monitoring | Finalized Ethereum ingestion | P05 | done |
+| P07 | TRON USDT monitoring | Solidified TRON ingestion and native fallback | P05 | done |
 | P08 | User wallets and historical import | Scoped administration, watch-set cutovers, and backfill | P03, P06, P07 | planned |
 | P09 | Telegram activation and delivery | Authorized enrollment and durable notifications | P03, P05, P08 | planned |
 | P10 | Independent reconciliation and failover | Detect omissions and recover provider outages | P06, P07, P08, P09 | planned |
