@@ -10,7 +10,8 @@ DEBIAN_IMAGE is debian:bookworm-slim (default) or debian:trixie-slim.
 Requires Docker and outbound package access on the test machine only.
 
 Actual native PHP packages, application initialization, permissions, and startup
-guards are checked. Only systemctl daemon-reload is simulated; no application
+guards are checked, including existing-site package/configuration preservation.
+Only systemctl daemon-reload is simulated; no application
 workers or web services start. Host application settings are not forwarded.
 HELP
   exit 0
@@ -124,6 +125,103 @@ for fixture in unsupported mismatched; do
   test "$original_os_link" = "$(readlink /etc/os-release || true)"
 done
 
+# Existing sites must be refused before package changes when PHP 8.5 is absent.
+# These are inert fixtures, not running web services.
+mkdir -p /etc/nginx/sites-enabled /etc/php/8.5/fpm/pool.d /tmp/coin-bot-web-fixtures /tmp/coin-bot-package-guard
+printf 'worker_processes 7; # Existing nginx configuration fixture.\n' > /etc/nginx/nginx.conf
+printf '# Existing site fixture.\nserver { listen 127.0.0.1:8080; }\n' > /etc/nginx/sites-enabled/existing-site.conf
+printf '[PHP]\nmemory_limit = 321M\n' > /etc/php/8.5/fpm/php.ini
+printf '[existing-site]\nuser = www-data\ngroup = www-data\npm = static\npm.max_children = 3\n' > /etc/php/8.5/fpm/pool.d/existing-site.conf
+chmod 0640 /etc/nginx/nginx.conf /etc/php/8.5/fpm/php.ini /etc/php/8.5/fpm/pool.d/existing-site.conf
+for executable in nginx php-fpm8.5; do
+  test ! -e "/usr/local/sbin/$executable"
+  cat > "/usr/local/sbin/$executable" <<'WEB_COMMAND'
+#!/bin/sh
+printf 'Unexpected web command invocation.\n' >/tmp/coin-bot-unexpected-web-command
+exit 99
+WEB_COMMAND
+  chmod 0755 "/usr/local/sbin/$executable"
+done
+cat > /tmp/coin-bot-default-php <<'DEFAULT_PHP'
+#!/bin/sh
+printf 'Unexpected default PHP invocation.\n' >/tmp/coin-bot-unexpected-web-command
+exit 99
+DEFAULT_PHP
+chmod 0755 /tmp/coin-bot-default-php
+/usr/bin/update-alternatives --install /usr/bin/php php /tmp/coin-bot-default-php 900 >/dev/null
+/usr/bin/update-alternatives --set php /tmp/coin-bot-default-php >/dev/null
+
+cat > /tmp/coin-bot-package-guard/apt-get <<'APT_BLOCK'
+#!/bin/sh
+printf 'Unexpected APT invocation.\n' >/tmp/coin-bot-unexpected-package-change
+exit 99
+APT_BLOCK
+cat > /tmp/coin-bot-package-guard/dpkg <<'DPKG_BLOCK'
+#!/bin/sh
+case "${1:-}" in
+  -s|--status|-l|--list|-L|--listfiles|-S|--search|--get-selections|--compare-versions|--version|--print-architecture|--print-foreign-architectures)
+    exec /usr/bin/dpkg "$@" ;;
+esac
+printf 'Unexpected dpkg write invocation.\n' >/tmp/coin-bot-unexpected-package-change
+exit 99
+DPKG_BLOCK
+cat > /tmp/coin-bot-package-guard/update-alternatives <<'ALTERNATIVES_BLOCK'
+#!/bin/sh
+case "${1:-}" in
+  --query|--display|--get-selections|--list|--version|--help)
+    exec /usr/bin/update-alternatives "$@" ;;
+esac
+printf 'Unexpected alternatives write invocation.\n' >/tmp/coin-bot-unexpected-package-change
+exit 99
+ALTERNATIVES_BLOCK
+chmod 0755 /tmp/coin-bot-package-guard/*
+
+server_snapshot() {
+  {
+    for directory in /etc/nginx /etc/php /etc/apt; do
+      if [[ -d "$directory" ]]; then
+        find "$directory" -printf '%p|%y|%m|%u|%g|%l\n' | LC_ALL=C sort
+        while IFS= read -r -d '' file; do
+          sha256sum "$file"
+        done < <(find "$directory" -type f -print0 | LC_ALL=C sort -z)
+      fi
+    done
+    /usr/bin/update-alternatives --query php
+    /usr/bin/dpkg-query -W -f='${binary:Package}\t${Version}\t${db:Status-Abbrev}\n' | LC_ALL=C sort
+  } | sha256sum | cut -d ' ' -f 1
+}
+
+shared_state="$(server_snapshot)"
+for mode in default no-packages; do
+  arguments=()
+  if [[ "$mode" == no-packages ]]; then
+    arguments=(--no-packages)
+    expected_error='PHP 8.5 CLI and required extensions are missing; no system packages were changed.'
+  else
+    expected_error='Existing web stack detected; automatic PHP package installation is disabled.'
+  fi
+  if PATH="/tmp/coin-bot-package-guard:$PATH" bash deploy/install-debian.sh "${arguments[@]}" > /tmp/coin-bot-shared-refusal.log 2>&1; then
+    echo 'A shared host without the required PHP runtime was unexpectedly accepted.' >&2
+    exit 1
+  fi
+  grep -Fq "$expected_error" /tmp/coin-bot-shared-refusal.log
+  test "$shared_state" = "$(server_snapshot)"
+  test ! -e /tmp/coin-bot-unexpected-package-change
+  test ! -e /tmp/coin-bot-unexpected-web-command
+  test ! -e /etc/apt/sources.list.d/coin-bot-php.list
+  test ! -e /home/www/coinbot
+  if getent passwd coin-bot >/dev/null; then exit 1; fi
+done
+
+# Put away only fixtures created above so the original fresh-host APT path is
+# still exercised. They return later for a runtime-reuse installation check.
+mv /etc/nginx /tmp/coin-bot-web-fixtures/nginx
+mv /etc/php/8.5/fpm /tmp/coin-bot-web-fixtures/fpm
+rmdir /etc/php/8.5 /etc/php
+mv /usr/local/sbin/nginx /tmp/coin-bot-web-fixtures/nginx-command
+mv /usr/local/sbin/php-fpm8.5 /tmp/coin-bot-web-fixtures/fpm-command
+/usr/bin/update-alternatives --remove php /tmp/coin-bot-default-php >/dev/null
+
 # Refuse an inaccessible existing parent before changing accounts or its mode.
 mkdir -p /home/www
 chmod 0700 /home/www
@@ -205,5 +303,44 @@ done
 /usr/local/sbin/coin-bot list --raw >/tmp/coin-bot-commands.list
 grep -q 'access:issue' /tmp/coin-bot-commands.list
 test "$(cat /tmp/coin-bot-systemctl-calls)" = daemon-reload
-printf 'Debian %s (%s) native installation smoke passed; systemd reload simulated; no workers started.\n' "$VERSION_ID" "$expected_suite"
+
+# Everything removed here was created by this smoke test in its disposable
+# container. No host application/state directory is mounted into this test.
+reset_test_installation() {
+  test -f /home/www/coinbot/.env
+  test "$(stat -c '%U:%G:%a' /var/lib/coin-bot)" = coin-bot:coin-bot:700
+  userdel coin-bot
+  if getent group coin-bot >/dev/null; then groupdel coin-bot; fi
+  rm -rf -- /home/www/coinbot /var/lib/coin-bot
+  rm -f -- /usr/local/sbin/coin-bot /etc/systemd/system/coin-bot@.service /etc/systemd/system/coin-bot.target
+}
+
+# Real PHP 8.5 now exists. Restore custom sites and a different default PHP
+# selection; both explicit and automatic runtime reuse must leave them intact.
+mv /tmp/coin-bot-web-fixtures/nginx /etc/nginx
+mkdir -p /etc/php/8.5
+test ! -e /etc/php/8.5/fpm
+mv /tmp/coin-bot-web-fixtures/fpm /etc/php/8.5/fpm
+mv /tmp/coin-bot-web-fixtures/nginx-command /usr/local/sbin/nginx
+mv /tmp/coin-bot-web-fixtures/fpm-command /usr/local/sbin/php-fpm8.5
+/usr/bin/update-alternatives --install /usr/bin/php php /tmp/coin-bot-default-php 900 >/dev/null
+/usr/bin/update-alternatives --set php /tmp/coin-bot-default-php >/dev/null
+shared_state="$(server_snapshot)"
+for mode in no-packages default; do
+  reset_test_installation
+  arguments=()
+  if [[ "$mode" == no-packages ]]; then arguments=(--no-packages); fi
+  PATH="/tmp/coin-bot-package-guard:$PATH" DB_DATABASE=/tmp/coin-bot-foreign.sqlite APP_KEY=fixture_injected_key \
+    bash deploy/install-debian.sh "${arguments[@]}" >/tmp/coin-bot-installation.log 2>&1
+  test "$shared_state" = "$(server_snapshot)"
+  test "$external_hash" = "$(sha256sum /tmp/coin-bot-foreign.sqlite | cut -d ' ' -f 1)"
+  test ! -e /tmp/coin-bot-unexpected-package-change
+  test ! -e /tmp/coin-bot-unexpected-web-command
+  test "$(stat -c '%U:%G:%a' /home/www/coinbot/.env)" = coin-bot:coin-bot:600
+  /usr/local/sbin/coin-bot list --raw >/tmp/coin-bot-commands.list
+  grep -q 'access:issue' /tmp/coin-bot-commands.list
+done
+test "$(wc -l < /tmp/coin-bot-systemctl-calls)" = 3
+test "$(grep -Fxc daemon-reload /tmp/coin-bot-systemctl-calls)" = 3
+printf 'Debian %s (%s) native and shared-host installation checks passed; only Coin Bot systemd reloads simulated; web configs, packages, repositories and default PHP preserved.\n' "$VERSION_ID" "$expected_suite"
 SMOKE

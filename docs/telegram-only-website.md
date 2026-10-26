@@ -1,5 +1,7 @@
 # Telegram-only HTTPS access
 
+This optional recipe is for a **dedicated host with no existing websites**. It changes the default Nginx site and global firewall rules. On a server hosting other sites, keep Coin Bot on its CLI workers; the catch-all Nginx/UFW recipe below is not a shared-host deployment procedure.
+
 The bot uses `getUpdates` long polling and needs no inbound web listener. A browser opening a `t.me` link or Telegram's in-app browser connects from the **user's IP**, not Telegram's server IP. This policy blocks those visitors, including administrators. Local CLI administration still works. There is no webhook endpoint in this application: do not call `setWebhook` while using this deployment.
 
 For an optional website, these configurations deny all application HTTP access except Telegram's published source subnets:

@@ -4,19 +4,51 @@ umask 0077
 
 usage() {
   cat <<'USAGE'
-Usage: sudo bash deploy/install-debian.sh
+Usage: sudo bash deploy/install-debian.sh [--no-packages]
 
 Fresh native Debian 12 (Bookworm) or Debian 13 (Trixie) installation from the full Coin Bot release ZIP.
 Installs PHP 8.5, the bundled application, its private configuration/database,
 and systemd definitions. No workers or web services are started.
 Existing installations and account/state collisions are refused.
+Use --no-packages on a server with existing sites: PHP 8.5 CLI and its required
+extensions must already be available; packages and repositories are untouched.
 USAGE
 }
 
 fail() { printf 'Installation stopped: %s\n' "$*" >&2; exit 1; }
 
-if [[ "${1:-}" == --help ]]; then usage; exit 0; fi
-[[ $# -eq 0 ]] || { usage >&2; exit 64; }
+php_runtime_ready() {
+  [[ -x /usr/bin/php8.5 ]] && /usr/bin/php8.5 -r 'if (PHP_MAJOR_VERSION !== 8 || PHP_MINOR_VERSION !== 5) { exit(1); } foreach (["bcmath", "pdo_sqlite", "sqlite3", "sodium", "mbstring", "dom", "curl", "zip"] as $extension) { if (!extension_loaded($extension)) { exit(1); } }' >/dev/null 2>&1
+}
+
+web_stack_present() {
+  if command -v nginx >/dev/null 2>&1 || command -v php-fpm >/dev/null 2>&1; then return 0; fi
+  local pattern package_status
+  for pattern in \
+    '/etc/nginx' '/usr/local/etc/nginx' '/usr/local/nginx' \
+    '/etc/php/*/fpm' '/etc/php-fpm*' '/usr/local/etc/php-fpm*' \
+    '/usr/local/php*/etc/php-fpm*' '/opt/plesk/php/*/etc/php-fpm*' \
+    '/usr/sbin/php-fpm*' '/usr/local/sbin/php-fpm*' '/usr/local/php*/sbin/php-fpm*' \
+    '/etc/apache2' '/usr/local/apache*' \
+    '/etc/systemd/system/nginx*.service' '/etc/systemd/system/php*fpm*.service' \
+    '/lib/systemd/system/nginx*.service' '/lib/systemd/system/php*fpm*.service' \
+    '/usr/lib/systemd/system/nginx*.service' '/usr/lib/systemd/system/php*fpm*.service' \
+    '/etc/init.d/nginx' '/etc/init.d/php*fpm*'; do
+    if compgen -G "$pattern" >/dev/null; then return 0; fi
+  done
+  package_status="$(dpkg-query -W -f='${db:Status-Status} ${binary:Package}\n' 'nginx*' 'php*-fpm' 'apache2*' 'libapache2-mod-php*' 2>/dev/null || true)"
+  grep -Eq '^(installed|unpacked|half-configured|half-installed|triggers-awaited|triggers-pending) ' <<<"$package_status"
+}
+
+no_packages=false
+while (( $# > 0 )); do
+  case "$1" in
+    --help) usage; exit 0 ;;
+    --no-packages) no_packages=true ;;
+    *) usage >&2; exit 64 ;;
+  esac
+  shift
+done
 [[ $EUID -eq 0 ]] || fail 'Run this installer with sudo.'
 
 # The installer supports the native Debian host, not a different distribution.
@@ -59,6 +91,15 @@ for required in release-manifest.json vendor/autoload.php tools/composer.phar ar
 done
 command -v systemctl >/dev/null || fail 'A systemd Debian host is required.'
 
+php_ready=false
+if php_runtime_ready; then
+  php_ready=true
+elif [[ "$no_packages" == true ]]; then
+  fail 'PHP 8.5 CLI and required extensions are missing; no system packages were changed.'
+elif web_stack_present; then
+  fail 'Existing web stack detected; automatic PHP package installation is disabled. Prepare PHP 8.5 CLI in a reviewed maintenance window, then use --no-packages.'
+fi
+
 installer_tmp="$(mktemp -d /tmp/coin-bot-install.XXXXXXXX)"
 cleanup() {
   local status=$?
@@ -72,7 +113,7 @@ trap cleanup EXIT
 
 # Debian 12/13 ship PHP 8.2/8.4. Use PHP 8.5 from the matching signed Sury repository.
 # Source: https://packages.sury.org/php/README.txt
-if [[ ! -x /usr/bin/php8.5 ]] || ! /usr/bin/php8.5 -r 'if (PHP_MAJOR_VERSION !== 8 || PHP_MINOR_VERSION !== 5) { exit(1); } foreach (["bcmath", "pdo_sqlite", "sqlite3", "sodium", "mbstring", "dom", "curl", "zip"] as $extension) { if (!extension_loaded($extension)) { exit(1); } }'; then
+if [[ "$php_ready" == false ]]; then
   apt-get update
   DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl
   curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
@@ -83,7 +124,7 @@ if [[ ! -x /usr/bin/php8.5 ]] || ! /usr/bin/php8.5 -r 'if (PHP_MAJOR_VERSION !==
   apt-get update
   DEBIAN_FRONTEND=noninteractive apt-get install -y php8.5-cli php8.5-common php8.5-bcmath php8.5-sqlite3 php8.5-mbstring php8.5-xml php8.5-curl php8.5-zip
 fi
-[[ -x /usr/bin/php8.5 ]] || fail '/usr/bin/php8.5 is missing.'
+php_runtime_ready || fail 'PHP 8.5 CLI or required extensions are unavailable.'
 
 # Verify and copy only manifest members. Extra files beside an extracted release,
 # including a locally edited .env, never enter the installed application.

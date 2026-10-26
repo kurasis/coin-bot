@@ -18,6 +18,8 @@ For a later server installation, see the [native Debian 12/13 deployment guide](
 
 The complete release ZIP includes production Composer dependencies and Composer itself. On a fresh Debian 12 or Debian 13 server, `sudo bash deploy/install-debian.sh` prepares the application; `sudo coin-bot` provides enrollment, startup, and local administration. To build this package from committed source, use `bin/release` on the build machine.
 
+For an existing web server, use `sudo bash deploy/install-debian.sh --no-packages` with a ready PHP 8.5 CLI runtime. This mode refuses to provision missing packages and leaves existing web/PHP configuration and CLI alternatives untouched. The bot does not need Nginx or PHP-FPM.
+
 The build machine can verify the full package with `bin/verify-native-install ARCHIVE debian:bookworm-slim` or `debian:trixie-slim`. These disposable native-install checks require Docker only on the build/test machine and start no application workers.
 
 Repository documentation and code use English.

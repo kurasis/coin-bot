@@ -1,20 +1,24 @@
 # Debian 12/13: install the complete ZIP
 
-The **full** ZIP already includes `vendor/`, Composer, the application, and its configuration templates. Use a fresh Debian 12 (Bookworm) or Debian 13 (Trixie) server with sudo access and local SSD. The installer handles PHP 8.5, SQLite, permissions, migrations, and systemd. No Docker or server-side Composer installation is needed.
+The **full** ZIP already includes `vendor/`, Composer, the application, and its configuration templates. Use Debian 12 (Bookworm) or Debian 13 (Trixie) with sudo access and local SSD. The installer prepares the application's SQLite, permissions, migrations, and systemd. On a clean dedicated host it can also provision PHP 8.5; on an existing web host use the ready CLI runtime with `--no-packages`. No Docker or server-side Composer installation is needed.
 
 The application is installed at `/home/www/coinbot`; its private configuration is `/home/www/coinbot/.env`. The installer creates `/home/www` if absent and preserves existing parent permissions. Existing `/home` and `/home/www` must permit directory traversal for the application user and must not be symlinks. Extract the archive elsewhere before running the installer.
 
 The installer detects the supported Debian release and uses its matching PHP repository. The earlier `deploy/install-debian13.sh` command remains a compatibility entry point for both releases.
 
+On a server with existing websites, use `sudo bash deploy/install-debian.sh --no-packages` instead. A complete `/usr/bin/php8.5` CLI runtime must already exist; otherwise installation stops before package/repository/account changes. This mode never runs APT/dpkg or installs/enables PHP extensions. The normal mode also refuses automatic PHP installation when it detects an existing web stack. Custom control-panel paths cannot be detected exhaustively, so use the explicit flag on every shared host.
+
+The bot uses CLI PHP only. Its installer does not write Nginx sites, FPM pools or PHP configuration, change CLI alternatives, or restart web services when reusing the ready runtime. PHP package installation on a clean host can change shared system packages and CLI alternatives; review any separate runtime provisioning on a host with existing sites.
+
 ## 1. Install
 
-Upload the full archive as `coin-bot-full.zip` to your home directory, then run:
+Upload the full archive as `coin-bot-full.zip` to your home directory. The command below reuses an existing PHP 8.5 CLI runtime and leaves system packages untouched. On a clean dedicated host that needs PHP, omit `--no-packages` to allow automatic provisioning.
 
 ```bash
 sudo apt-get update && sudo apt-get install -y unzip
 unzip coin-bot-full.zip
 cd coin-bot
-sudo bash deploy/install-debian.sh
+sudo bash deploy/install-debian.sh --no-packages
 sudo nano /home/www/coinbot/.env
 ```
 

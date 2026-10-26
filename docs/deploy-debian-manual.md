@@ -4,6 +4,8 @@ Use a fresh dedicated Debian 12 (Bookworm) or Debian 13 (Trixie) server, a regul
 
 Code lives at `/home/www/coinbot`. Ensure its parent directories allow traversal for `coin-bot`; preserve any existing parent ownership and permissions. The worker unit exposes only this application under its otherwise hidden `/home`.
 
+The package provisioning commands below are for a dedicated host or a reviewed maintenance window. For a host with existing Nginx/PHP-FPM sites, use the [complete package](deploy-debian.md) with `--no-packages` and an already prepared PHP 8.5 CLI runtime. Adding/upgrading system PHP packages can affect shared extensions, CLI alternatives and FPM restarts even when configuration files are preserved.
+
 ## 1. Install PHP 8.5 and Composer
 
 Debian 12 ships PHP 8.2; Debian 13 ships PHP 8.4. Add the signed [Sury PHP repository](https://packages.sury.org/php/README.txt), then install the explicit 8.5 packages:
@@ -128,7 +130,6 @@ umask 0022
 cb ops:pause
 cb ops:backup
 sudo systemctl stop coin-bot.target 'coin-bot@*.service'
-if systemctl is-active --quiet php8.5-fpm; then sudo systemctl stop php8.5-fpm; fi
 git pull --ff-only
 php8.5 /usr/local/bin/composer install --no-dev --no-scripts --no-interaction --prefer-dist --optimize-autoloader
 php8.5 /usr/local/bin/composer check-platform-reqs --no-dev
@@ -137,11 +138,10 @@ cb package:discover
 cb migrate --force
 sudo install -m 0644 deploy/systemd/coin-bot@.service deploy/systemd/coin-bot.target /etc/systemd/system/
 sudo systemctl daemon-reload
-if [ -f /etc/php/8.5/fpm/pool.d/coin-bot.conf ]; then sudo systemctl start php8.5-fpm; fi
 cb ops:resume --force
 sudo systemctl start coin-bot.target
 cb ops:health
 )
 ```
 
-The update stops the optional FPM site before changing code/schema; Nginx's access policy remains active. If any update command fails, leave workers stopped and investigate before resuming. For an ordinary shutdown, stop the target and all instances as above. Current workers do not drain HTTP on SIGTERM; a send in flight can have an ambiguous outcome and retry after lease expiry. Preserve `.env`, `APP_KEY`, `/var/lib/coin-bot`, `storage`, and encrypted backups. Never regenerate the key, reset cursors, or restore a raw database over active writers; use the fenced [recovery procedure](operations.md#pause-and-restore).
+This update sequence covers the CLI workers. An optional website connected to this application's database must be fenced separately before code/schema changes. Coordinate that website's own maintenance; stopping a shared PHP-FPM master would stop its other pools too. If any update command fails, leave workers stopped and investigate before resuming. For an ordinary shutdown, stop the target and all instances as above. Current workers do not drain HTTP on SIGTERM; a send in flight can have an ambiguous outcome and retry after lease expiry. Preserve `.env`, `APP_KEY`, `/var/lib/coin-bot`, `storage`, and encrypted backups. Never regenerate the key, reset cursors, or restore a raw database over active writers; use the fenced [recovery procedure](operations.md#pause-and-restore).
