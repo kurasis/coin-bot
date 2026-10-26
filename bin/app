@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+repository_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+export DOCKER_CONFIG="${DOCKER_CONFIG:-/tmp/coin-bot-docker}"
+trust_args=()
+trust_file="${SSL_CERT_FILE:-/etc/ssl/certs/ca-certificates.crt}"
+if [[ -f "$trust_file" ]]; then
+  trust_args=(--volume "$trust_file:/run/host-ca.pem:ro" --env SSL_CERT_FILE=/run/host-ca.pem --env CURL_CA_BUNDLE=/run/host-ca.pem --env COMPOSER_CAFILE=/run/host-ca.pem)
+fi
+exec docker run --rm --init --user "$(id -u):$(id -g)" \
+  --env HTTP_PROXY --env HTTPS_PROXY --env NO_PROXY --env http_proxy --env https_proxy --env no_proxy \
+  "${trust_args[@]}" --volume "$repository_root:/app" --workdir /app \
+  coin-bot-php:8.5 "$@"

@@ -1,6 +1,6 @@
 # Development plan
 
-Status: planned. No development stage below is complete yet. Existing mainnet research probes are design evidence, not application acceptance tests.
+Status: implementation in progress. See the stage table and [development evidence](development-log.md) for completed work and outstanding live gates. Existing research probes alone are not application acceptance tests.
 
 Scope: PHP 8.5, Laravel 13, SQLite; official USDT on Ethereum and TRON; approximately 100 distinct addresses shared across multiple isolated users; individual key-based activation; finalized incoming/outgoing transfer notifications. See [the architecture](architecture.md) for the governing decisions and delivery limitations.
 
@@ -16,7 +16,7 @@ Missing production credentials do not block fixture-based implementation. They d
 
 | ID | Stage | Main result | Dependencies | Status |
 | --- | --- | --- | --- | --- |
-| P01 | Runtime and project foundation | Reproducible Laravel application and CI | None | planned |
+| P01 | Runtime and project foundation | Reproducible Laravel application and CI | None | done |
 | P02 | Multi-user domain and persistence | Isolated ownership, ledger, cursors, and outbox schema | P01 | planned |
 | P03 | Individual access keys | Issuance, single-use activation, expiry, and revocation | P02 | planned |
 | P04 | RPC adapters and provider capabilities | Validated chain clients and capability matrix | P01, P02 | planned |

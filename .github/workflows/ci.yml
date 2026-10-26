@@ -1,0 +1,27 @@
+name: CI
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build pinned PHP 8.5 runtime
+        run: bin/build
+      - name: Install locked dependencies
+        run: bin/app composer install --no-interaction --prefer-dist
+      - name: Validate dependencies and style
+        run: |
+          bin/app composer validate --strict
+          bin/app vendor/bin/pint --test
+      - name: Initialize local configuration
+        run: |
+          cp .env.example .env
+          bin/app php artisan key:generate --force
+      - name: Test application
+        run: bin/app php artisan test
+      - name: Test fresh SQLite setup
+        run: |
+          touch database/ci.sqlite
+          docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/app" -w /app -e DB_DATABASE=/app/database/ci.sqlite coin-bot-php:8.5 php artisan migrate --force

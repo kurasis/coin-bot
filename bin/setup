@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+repository_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repository_root"
+bin/build
+bin/app composer install --no-interaction --prefer-dist
+if [[ ! -f .env ]]; then cp .env.example .env; chmod 600 .env; fi
+if ! grep -qE '^APP_KEY=.+$' .env; then bin/app php artisan key:generate --force; fi
+if [[ ! -f database/database.sqlite ]]; then touch database/database.sqlite; fi
+bin/app php artisan migrate --force
