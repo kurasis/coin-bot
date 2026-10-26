@@ -1,0 +1,12 @@
+Coin Bot shared-web-host installation package
+Source: b178044bb02f36a329f345e28a3adb5f464eb3dc
+Application path: /home/www/coinbot
+Full ZIP includes Composer and 74 locked production dependencies.
+Every manifest member, ZIP integrity/checksum, executable modes and private-file exclusions checked.
+Actual final ZIP relocation, platform requirements, autoload, package discovery and migrations passed.
+Exact full ZIP passed native and shared-host checks on Debian 12 Bookworm and Debian 13 Trixie with native PHP 8.5.12.
+Missing-runtime default/shared-host and --no-packages cases refused before package/repository/account changes.
+Fresh dedicated-host provisioning still passed, including matching package provenance and SQLite integrity.
+Existing-runtime reuse passed in both --no-packages and default modes: Nginx/FPM/PHP INI configurations, package registry, repositories and manual default PHP alternatives snapshots were unchanged. Package/alternatives write blockers and web-command markers were not triggered.
+Only test-created Coin Bot state was reset inside disposable containers. Systemctl reload was simulated; no real web services or application workers were started.
+The actual user server was not inspected. Custom deployment paths cannot be detected exhaustively; use --no-packages on any shared host. Live provider/recipient/off-host recovery acceptance remains deferred.
