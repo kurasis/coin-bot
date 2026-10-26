@@ -2,6 +2,8 @@
 
 Use a fresh dedicated Debian 13 server, a regular sudo user, local SSD, and roughly 2 vCPU / 2 GB RAM. This guide uses native PHP 8.5 and systemd. The bot uses outbound HTTPS long polling: no website, inbound application port, Node.js, or Redis is needed. Production acceptance remains in the [release checklist](release-checklist.md).
 
+Code lives at `/home/www/coinbot`. Ensure its parent directories allow traversal for `coin-bot`; preserve any existing parent ownership and permissions. The worker unit exposes only this application under its otherwise hidden `/home`.
+
 ## 1. Install PHP 8.5 and Composer
 
 Debian 13's default PHP is 8.4. Add the signed [Sury PHP repository](https://packages.sury.org/php/README.txt), then install the explicit 8.5 packages:
@@ -40,9 +42,9 @@ sudo install -m 0755 "$composer_tmp/composer" /usr/local/bin/composer
 ```bash
 umask 0022
 sudo useradd --system --user-group --home-dir /var/lib/coin-bot --shell /usr/sbin/nologin coin-bot
-sudo install -d -o "$USER" -g "$(id -gn)" -m 0755 /srv/coin-bot
-git clone --branch main --single-branch https://github.com/kurasis/coin-bot.git /srv/coin-bot
-cd /srv/coin-bot
+sudo install -d -o "$USER" -g "$(id -gn)" -m 0755 /home/www/coinbot
+git clone --branch main --single-branch https://github.com/kurasis/coin-bot.git /home/www/coinbot
+cd /home/www/coinbot
 php8.5 /usr/local/bin/composer install --no-dev --no-scripts --no-interaction --prefer-dist --optimize-autoloader
 php8.5 /usr/local/bin/composer check-platform-reqs --no-dev
 sudo install -d -o coin-bot -g coin-bot -m 0700 /var/lib/coin-bot
@@ -69,13 +71,13 @@ For access limited to known Telegram IDs, set `TELEGRAM_ALLOWED_USER_IDS` to the
 Mount a protected, writable, independently retained **off-host backup destination** at `/mnt/coin-bot-backups` and configure its persistent mount before continuing. A normal local directory is insufficient. Allow the `coin-bot` user to write there. The service refuses startup if this path is not a mount point; mount presence alone does not prove remote persistence.
 
 ```bash
-cb() { sudo -u coin-bot /usr/bin/php8.5 /srv/coin-bot/artisan "$@"; }
+cb() { sudo -u coin-bot /usr/bin/php8.5 /home/www/coinbot/artisan "$@"; }
 (
 set -euo pipefail
 mountpoint -q /mnt/coin-bot-backups
 sudo -u coin-bot test -w /mnt/coin-bot-backups
 cb package:discover
-if ! sudo -u coin-bot grep -qE '^APP_KEY=.+$' /srv/coin-bot/.env; then cb key:generate --force; fi
+if ! sudo -u coin-bot grep -qE '^APP_KEY=.+$' /home/www/coinbot/.env; then cb key:generate --force; fi
 cb migrate --force
 cb ops:backup
 )
@@ -111,7 +113,7 @@ Keep inbound web ports closed if a site is unnecessary. If the site is required,
 
 ## 5. Update or stop
 
-From `/srv/coin-bot`, with `cb` defined:
+From `/home/www/coinbot`, with `cb` defined:
 
 ```bash
 (

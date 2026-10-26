@@ -2,6 +2,8 @@
 
 The **full** ZIP already includes `vendor/`, Composer, the application, and its configuration templates. Use a fresh Debian 13 server with sudo access and local SSD. The installer handles PHP 8.5, SQLite, permissions, migrations, and systemd. No Docker or server-side Composer installation is needed.
 
+The application is installed at `/home/www/coinbot`; its private configuration is `/home/www/coinbot/.env`. The installer creates `/home/www` if absent and preserves existing parent permissions. Existing `/home` and `/home/www` must permit directory traversal for the application user and must not be symlinks. Extract the archive elsewhere before running the installer.
+
 ## 1. Install
 
 Upload the full archive as `coin-bot-full.zip` to your home directory, then run:
@@ -11,10 +13,12 @@ sudo apt-get update && sudo apt-get install -y unzip
 unzip coin-bot-full.zip
 cd coin-bot
 sudo bash deploy/install-debian13.sh
-sudo nano /srv/coin-bot/.env
+sudo nano /home/www/coinbot/.env
 ```
 
 Fill in your Telegram bot token, allowed numeric Telegram user IDs, and the Ethereum/TRON provider URLs/API keys. Keep provider history floors blank until verified; never invent `0`. Settings are labelled in `.env`; see [configuration](configuration.md) for details. Preserve the generated `.env` and `APP_KEY` securely off-host.
+
+Use your one QuickNode endpoint for Ethereum. For TRON, use TronGrid plus a separate [Chainstack TRON Mainnet node](https://console.chainstack.com/); its HTTPS base is the native URL, and the same base plus `/jsonrpc` is the JSON-RPC URL. See [the exact settings](configuration.md#one-quicknode-endpoint).
 
 Connect a protected, writable off-host backup mount at `/mnt/coin-bot-backups`, with write access for the `coin-bot` user. This depends on your backup provider; an ordinary local folder does not replace it. Installation completes before this mount exists, but startup requires it.
 

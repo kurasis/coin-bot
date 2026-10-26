@@ -27,7 +27,7 @@ try {
     }
     $token = config('telegram.token');
     if (! is_string($token) || ! preg_match('/^[A-Za-z0-9:_.-]{1,512}$/D', $token)) {
-        $issues[] = 'Set TELEGRAM_BOT_TOKEN in /srv/coin-bot/.env.';
+        $issues[] = 'Set TELEGRAM_BOT_TOKEN in /home/www/coinbot/.env.';
     }
     $ids = config('telegram.allowed_user_ids');
     if (! is_string($ids) || (trim($ids) !== ''

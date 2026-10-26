@@ -10,8 +10,8 @@ Use two independent RPC vendors per chain. Suggested provider arrangement:
 
 | Chain | Primary | Independent secondary | Finality source |
 | --- | --- | --- | --- |
-| Ethereum | Paid Alchemy Ethereum RPC | Paid QuickNode Ethereum RPC | `eth_getBlockByNumber("finalized", false)` |
-| TRON | TronGrid JSON-RPC and native HTTP APIs | Paid QuickNode TRON RPC and native HTTP APIs | Native `/walletsolidity/getnowblock` |
+| Ethereum | Alchemy Ethereum RPC | QuickNode Ethereum RPC (one endpoint; verify the selected plan) | `eth_getBlockByNumber("finalized", false)` |
+| TRON | TronGrid JSON-RPC and native HTTP APIs | Independent Chainstack TRON node (account capabilities require verification) | Native `/walletsolidity/getnowblock` |
 
 These are provider candidates, not purchased or certified production accounts. Verify method support, historical retention, topic filters, rate limits, response-size limits, and finality behavior on the actual plans before launch. Different brand names do not by themselves prove independent infrastructure; check upstream dependencies and outage history.
 

@@ -14,12 +14,12 @@ HELP
 
 if [[ $# == 0 || ${1:-} == --help || ${1:-} == help ]]; then usage; exit 0; fi
 if [[ $EUID != 0 ]]; then echo 'Run with sudo.' >&2; exit 1; fi
-if [[ ! -f /srv/coin-bot/vendor/autoload.php || ! -f /srv/coin-bot/.env ]]; then
+if [[ ! -f /home/www/coinbot/vendor/autoload.php || ! -f /home/www/coinbot/.env ]]; then
   echo 'Install the full archive first.' >&2; exit 1
 fi
-cd /srv/coin-bot
+cd /home/www/coinbot
 runtime=(runuser -u coin-bot -- env -i PATH=/usr/bin:/bin HOME=/var/lib/coin-bot)
-artisan() { "${runtime[@]}" /usr/bin/php8.5 /srv/coin-bot/artisan "$@"; }
+artisan() { "${runtime[@]}" /usr/bin/php8.5 /home/www/coinbot/artisan "$@"; }
 check_start() {
   if ! mountpoint -q /mnt/coin-bot-backups; then
     echo 'Mount the protected off-host backup destination at /mnt/coin-bot-backups before startup.' >&2
@@ -29,7 +29,7 @@ check_start() {
     echo 'Allow the coin-bot user to write to the backup mount.' >&2
     exit 1
   fi
-  "${runtime[@]}" /usr/bin/php8.5 /srv/coin-bot/deploy/native-preflight.php "$1"
+  "${runtime[@]}" /usr/bin/php8.5 /home/www/coinbot/deploy/native-preflight.php "$1"
 }
 
 case "$1" in

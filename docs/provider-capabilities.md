@@ -5,9 +5,11 @@ The application has no default production RPC URLs and does not silently fall ba
 | Candidate account | Implementation tested | Actual account status | Outstanding certification |
 | --- | --- | --- | --- |
 | Ethereum / Alchemy primary | Ethereum JSON-RPC tested on independent public endpoint | Not configured | Identity/finality, 100-address OR, receipts, recent/history ranges, truncation behavior, retention, quota |
-| Ethereum / QuickNode secondary | Common adapter covered by HTTP fixtures | Not configured | All account capability checks and independent history reconciliation |
+| Ethereum / QuickNode secondary | Common adapter covered by HTTP fixtures | User created an Ethereum endpoint; URL is not bound in this environment | All account capability checks and independent history reconciliation |
 | TRON / TronGrid primary | Public TronGrid JSON-RPC and native solidity probes passed | API key not configured | Actual plan limits, history retention, recovery quota |
-| TRON / QuickNode secondary | TRON JSON-RPC/native adapter covered by HTTP fixtures | Not configured | Native solidity endpoints, numeric ranges, receipts, topic batching, retention, quota |
+| TRON / Chainstack secondary candidate | Common TRON JSON-RPC/native adapter covered by HTTP fixtures; published node API supports both interfaces | No account endpoint supplied | Actual native solidity endpoints (including receipt-by-block fallback), numeric ranges, receipts, topic batching, retention, quota |
+
+The selected QuickNode free account provides one endpoint, already used for Ethereum. The TRON secondary candidate is a separate Chainstack TRON Mainnet node; its authenticated HTTP base serves native APIs, and appending `/jsonrpc` selects JSON-RPC. See [configuration](configuration.md#one-quicknode-endpoint) and the [official node API reference](https://docs.chainstack.com/reference/tron-api-reference). Published method support and a free-plan offer do not certify the actual account; test `walletsolidity/gettransactioninfobyblocknum` as part of the existing native receipt recovery gate.
 
 ## Observed read-only behavior
 

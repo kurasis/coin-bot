@@ -32,7 +32,7 @@ Do not allow `80/tcp`, global `443/tcp`, or the `Nginx Full` profile. Keep outbo
 With the certificate installed and the firewall enabled:
 
 ```bash
-cd /srv/coin-bot
+cd /home/www/coinbot
 sudo apt-get install -y nginx php8.5-fpm
 sudo install -m 0644 deploy/nginx/telegram-only.conf /etc/nginx/snippets/coin-bot-telegram-only.conf
 sudo install -m 0644 deploy/nginx/coin-bot.conf /etc/nginx/sites-available/coin-bot
@@ -46,7 +46,9 @@ sudo systemctl restart php8.5-fpm
 sudo systemctl reload nginx
 ```
 
-Ensure this is the only enabled website on the dedicated host and no other web listener exposes the application. The dedicated FPM pool runs as `coin-bot` so it can read the private `.env`; the public web root is strictly `/srv/coin-bot/public`. The catch-all HTTPS server applies the allowlist to static files and PHP routes. Port 80 has no configured listener after disabling the default site.
+Ensure this is the only enabled website on the dedicated host and no other web listener exposes the application. The dedicated FPM pool runs as `coin-bot` so it can read the private `.env`; the public web root is strictly `/home/www/coinbot/public`. The catch-all HTTPS server applies the allowlist to static files and PHP routes. Port 80 has no configured listener after disabling the default site.
+
+The `coin-bot` and `www-data` users must be able to traverse `/home` and `/home/www`. Preserve existing parent permissions; do not expose other home directories to solve an application access error.
 
 Do not enable `real_ip_header` or trust arbitrary `X-Forwarded-For`/`X-Real-IP` headers. Nginx must see the actual network source IP. Review future locations carefully: child `allow`/`deny` directives replace inherited ones, and rewrite-phase `return` responses can run before access checks. See the [Nginx access module](https://nginx.org/en/docs/http/ngx_http_access_module.html).
 

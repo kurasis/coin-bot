@@ -25,10 +25,18 @@ source /etc/os-release
 [[ "${ID:-}" == debian && "${VERSION_ID:-}" == 13 ]] || fail 'Debian 13 is required.'
 
 source_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
-application_dir=/srv/coin-bot
+application_dir=/home/www/coinbot
 state_dir=/var/lib/coin-bot
-[[ "$source_root" != "$application_dir" ]] || fail 'Extract the full ZIP outside /srv/coin-bot, then run the installer there.'
-[[ ! -L /srv && ! -e "$application_dir" && ! -L "$application_dir" ]] || fail '/srv/coin-bot already exists or /srv is a symlink. Existing code and secrets were left unchanged.'
+[[ "$source_root" != "$application_dir" ]] || fail 'Extract the full ZIP outside /home/www/coinbot, then run the installer there.'
+for parent in /home /home/www; do
+  [[ ! -L "$parent" ]] || fail "$parent must not be a symlink. Existing files were left unchanged."
+  if [[ -e "$parent" ]]; then
+    [[ -d "$parent" ]] || fail "$parent must be a directory."
+    parent_mode="$(stat -c '%a' -- "$parent")"
+    (( (8#$parent_mode & 1) != 0 )) || fail "$parent must permit application-user directory traversal. Existing parent permissions were left unchanged."
+  fi
+done
+[[ ! -e "$application_dir" && ! -L "$application_dir" ]] || fail '/home/www/coinbot already exists. Existing code and secrets were left unchanged.'
 [[ ! -L "$state_dir" ]] || fail '/var/lib/coin-bot must not be a symlink.'
 if [[ -e "$state_dir" ]]; then
   [[ -d "$state_dir" ]] || fail '/var/lib/coin-bot is not a directory.'
@@ -117,6 +125,10 @@ fclose($list);
 ' "$source_root" "$installer_tmp/members"
 
 useradd --system --user-group --home-dir "$state_dir" --shell /usr/sbin/nologin coin-bot
+if [[ ! -d /home/www ]]; then install -d -o root -g root -m 0755 /home/www; fi
+for parent in /home /home/www; do
+  runuser -u coin-bot -- /usr/bin/test -x "$parent" || fail "$parent does not allow the application user to traverse it; check its existing ACL."
+done
 install -d -o root -g root -m 0755 "$application_dir"
 tar -C "$source_root" --null --files-from="$installer_tmp/members" -cf - \
   | tar -C "$application_dir" --no-same-owner --same-permissions -xf -
@@ -160,10 +172,10 @@ install -o root -g root -m 0644 "$application_dir/deploy/systemd/coin-bot@.servi
 systemctl daemon-reload
 
 cat <<'DONE'
-Installed Coin Bot in /srv/coin-bot. No workers or web services were started.
+Installed Coin Bot in /home/www/coinbot. No workers or web services were started.
 
 Next:
-  1. Edit /srv/coin-bot/.env with the bot token, provider URLs, and allowed IDs.
+  1. Edit /home/www/coinbot/.env with the bot token, provider URLs, and allowed IDs.
   2. Preserve .env (including APP_KEY) securely off-host, separately from backups.
   3. Mount the protected off-host backup destination at /mnt/coin-bot-backups.
   4. Run: sudo coin-bot enroll

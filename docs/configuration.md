@@ -36,6 +36,14 @@ Use prefixes `ETHEREUM_PRIMARY`, `ETHEREUM_SECONDARY`, `TRON_PRIMARY`, and `TRON
 
 There is no default public production provider or fabricated API key. Independent reconciliation waits when retention is unknown or a range predates the declared floor. A value of zero asserts verified full history; it must not be copied from fixtures as a way to bypass certification. See [provider capabilities](provider-capabilities.md).
 
+### One QuickNode endpoint
+
+Keep the existing QuickNode Ethereum Mainnet endpoint as `ETHEREUM_SECONDARY_RPC_URL`; Alchemy remains the independent Ethereum primary. A second QuickNode endpoint is unnecessary for the proposed TRON configuration: use TronGrid as primary and create one **TRON Mainnet** node in [Chainstack](https://console.chainstack.com/) as the independent secondary candidate.
+
+For that Chainstack node's authenticated HTTPS base URL `B`, set `TRON_SECONDARY_NATIVE_URL` to `B` and `TRON_SECONDARY_RPC_URL` to `B/jsonrpc` (append exactly once). Leave `TRON_SECONDARY_API_KEY` empty when the URL contains the account authentication. The [official API reference](https://docs.chainstack.com/reference/tron-api-reference) documents these interfaces on one node endpoint. Treat the URL as a credential and keep it in the private `.env` only.
+
+Chainstack advertises a free TRON developer node on its [TRON page](https://chainstack.com/build-better-with-tron/). Verify the actual account's limits, retained history, and native receipt fallback before production; this is a configuration option, not account certification. Keep history floors blank until verified. No paid provider or additional endpoint has been purchased.
+
 Bot credentials are `TELEGRAM_BOT_TOKEN`; `TELEGRAM_STAGING_CHAT_ID` only records a future permitted test target and does not enroll a user or trigger a send. Real destinations and private wallet settings are persisted per user after key activation. There is intentionally no global recipient ID that overrides tenant routing. Official mainnet token/network identities and private-only delivery policy remain protected application defaults, rather than user-submitted addresses or secrets.
 
 ## Private bot access
@@ -54,6 +62,6 @@ Telegram usernames remain discoverable; this policy controls application replies
 
 For optional future Compose deployment, set `COIN_BOT_BACKUP_PATH` to a protected verified off-host backup mount and choose `COIN_BOT_UID/GID`. Keep `APP_KEY` separately and securely backed up; a proxy placeholder cannot replace a raw local encryption key. Production settings are not needed to run offline tests. See [operations](operations.md) for enrollment bootstrap, supervision, health, and fenced restore.
 
-For native deployment, use the [Debian 13 guide](deploy-debian13.md): the full ZIP includes Composer and locked production dependencies, and its first-install script prepares PHP, the private configuration, SQLite, and systemd without launching workers. The database is `/var/lib/coin-bot/database.sqlite`, encrypted backups use `/mnt/coin-bot-backups`, and Laravel reads the private `.env` directly. Container-specific `COIN_BOT_UID/GID/BACKUP_PATH` settings are unused. Optional web access uses Nginx source-IP rules; it does not introduce Telegram webhooks.
+For native deployment, use the [Debian 13 guide](deploy-debian13.md): the full ZIP includes Composer and locked production dependencies, and its first-install script prepares PHP, the private configuration, SQLite, and systemd without launching workers. Code and the private `.env` live at `/home/www/coinbot`; the database is `/var/lib/coin-bot/database.sqlite`, and encrypted backups use `/mnt/coin-bot-backups`. The worker namespace exposes only this application below its otherwise hidden `/home`. Container-specific `COIN_BOT_UID/GID/BACKUP_PATH` settings are unused. Optional web access uses Nginx source-IP rules; it does not introduce Telegram webhooks.
 
 Cloud environment draft settings contain installation/start instructions and future integration requirements. Saving those declarations neither supplies values nor launches processes; the development snapshot is separate from production deployment.
