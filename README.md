@@ -14,6 +14,8 @@ Development code for P01-P12 and its offline verification are complete. The deve
 
 Current scope is development only: production deployment and real recipient delivery are deferred. All integration settings live in `config/` and the credential-free `.env.example`; see [configuration](docs/configuration.md).
 
+For a later server installation, see the [Debian 13 deployment quick guide](docs/deploy-debian13.md).
+
 Repository documentation and code use English.
 
 ## Local development
