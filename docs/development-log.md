@@ -69,3 +69,16 @@ P04 follow-up: added read-only `chain:probe` with mandatory address filters, bou
 - Operations suite: 12 tests / 58 assertions passed. Includes tamper/wrong-key/truncation protection, stale grant/key invalidation, reconciliation lag/missing-watermark detection, open circuits/conflicts, and healthy-backfill exclusions.
 - Actual local Compose smoke used a uniquely named disposable project and persistent volumes: prepare/migrate/backup startup passed, encrypted artifacts were created, backup worker restart created further artifacts, and current schema was verified. The smoke exposed a missing read-only mount target; committed `var/.gitignore` fixes it. Only the disposable project/volumes/artifacts were then removed. No production/Telegram/scanner services were launched.
 - Local backup behavior is not evidence of off-host persistence, external alerts, or measured full host-loss RPO/RTO; those checks are deferred.
+
+## P12 - Offline acceptance complete; live acceptance deferred
+
+- End-to-end acceptance uses real Laravel services and SQLite with simulated external blockchain/Telegram boundaries: 100 distinct addresses, two users, a shared wallet with private labels, 28,800-block replay in 29 ranges, outage resume, SQL atomic rollback, revocation/reenrollment, and deliberately ambiguous delivery.
+- The two release cases passed 270 assertions. Expected backlog results: 104 transfer events, exact total 5,300.000000 USDT, and 105 authorized destination notifications. These are deterministic functional results, not real provider throughput.
+- Final `bin/verify`: exit 0; runtime/SQLite/index checks, strict Composer validation, Pint (111 PHP files), and **163 tests / 907 assertions** passed. Composer audit reported no security vulnerability advisories.
+- Verified secure runtime-variable forwarding without displaying a binding value. An external SQLite sentinel survived a health test run with `DB_DATABASE` injected; tests used isolated memory SQLite. PHPUnit forces both environment/server settings and the base test case guards its connection before database-refresh traits run.
+- Re-running `bin/setup` completed successfully without changing the local configuration/application key, composer.lock, or tracked source files. Installation preserves an existing raw APP_KEY binding. All supported integration/timing/health settings are in config files and the credential-free environment example/configuration guide.
+- Actual-account, recipient, external-monitor, off-host restore, and production observation gates remain unrun and deferred by the user's development-only instruction.
+
+## P13 - Deferred by user
+
+No production host is selected, no paid services were purchased, no real Telegram messages were sent, and no production deployment was performed. Future launch must close the release checklist's actual-account and authorized-recipient gates.

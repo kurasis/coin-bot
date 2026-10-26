@@ -11,16 +11,12 @@ jobs:
         run: bin/build
       - name: Install locked dependencies
         run: bin/app composer install --no-interaction --prefer-dist
-      - name: Validate dependencies and style
-        run: |
-          bin/app composer validate --strict
-          bin/app vendor/bin/pint --test
       - name: Initialize local configuration
         run: |
           cp .env.example .env
           bin/app php artisan key:generate --force
-      - name: Test application
-        run: bin/app php artisan test
+      - name: Verify development acceptance
+        run: bin/verify
       - name: Test fresh SQLite setup
         run: |
           touch database/ci.sqlite

@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+set -euo pipefail
+repository_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repository_root"
+
+git diff --check
+git diff --cached --check
+
+# Inspect metadata and staged additions without printing credential-bearing content.
+bin/app php -r '
+require "vendor/autoload.php";
+$app = require "bootstrap/app.php";
+$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+$sqlite = config("database.connections.sqlite");
+if (PHP_MAJOR_VERSION !== 8 || PHP_MINOR_VERSION !== 5
+    || ! extension_loaded("pdo_sqlite") || ! extension_loaded("bcmath")
+    || config("database.default") !== "sqlite"
+    || ! filter_var($sqlite["foreign_key_constraints"] ?? false, FILTER_VALIDATE_BOOL)
+    || strtoupper($sqlite["journal_mode"] ?? "") !== "WAL"
+    || strtoupper($sqlite["synchronous"] ?? "") !== "FULL"
+    || strtoupper($sqlite["transaction_mode"] ?? "") !== "IMMEDIATE"
+    || (int) ($sqlite["busy_timeout"] ?? 0) < 1000) {
+    throw new RuntimeException("Required PHP 8.5/SQLite durability configuration is not enabled.");
+}
+function gitOutput(array $arguments): string {
+    $process = proc_open(array_merge(["git"], $arguments), [1 => ["pipe", "w"], 2 => ["pipe", "w"]], $pipes);
+    if (! is_resource($process)) {
+        throw new RuntimeException("Cannot inspect the Git index.");
+    }
+    $output = stream_get_contents($pipes[1]);
+    stream_get_contents($pipes[2]);
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    if (proc_close($process) !== 0) {
+        throw new RuntimeException("Git index inspection failed.");
+    }
+    return $output;
+}
+foreach (explode("\0", gitOutput(["ls-files", "-z"])) as $path) {
+    if ($path === "") { continue; }
+    $name = basename($path);
+    if ((str_starts_with($name, ".env") && $name !== ".env.example")
+        || preg_match("/(?:\\.sqlite[0-9]*(?:-[a-z]+)?|\\.db[0-9]*|\\.key|\\.pem|\\.p12)$/iD", $path)
+        || $name === "auth.json") {
+        throw new RuntimeException("Git contains a prohibited local configuration, database, or key artifact.");
+    }
+}
+$diff = gitOutput(["diff", "--cached", "--unified=0", "--no-color", "--no-ext-diff"]);
+foreach (explode("\n", $diff) as $line) {
+    if (! str_starts_with($line, "+") || str_starts_with($line, "+++")) { continue; }
+    if (preg_match("/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,}/", $line)
+        || preg_match("~https://[^\\s]+(?:alchemy\\.com/v2/|quiknode\\.pro/)[A-Za-z0-9_-]{20,}~", $line)) {
+        throw new RuntimeException("A staged addition may contain credentials; remove secret values before committing.");
+    }
+    if (preg_match("/^\\+\\s*(?:export\\s+)?(?:APP_KEY|TELEGRAM_BOT_TOKEN|TRON_(?:PRIMARY|SECONDARY)_API_KEY)\\s*=\\s*(.+)$/i", $line, $matches)
+        && trim($matches[1], chr(34).chr(39)." \t") !== "") {
+        throw new RuntimeException("A staged addition assigns a credential value; use secure environment configuration.");
+    }
+}
+echo "Runtime, SQLite durability, and Git secret-heuristic checks passed.\n";
+'
+
+bin/app composer validate --strict
+bin/app php vendor/bin/pint --test
+bin/app php vendor/bin/phpunit --fail-on-warning --fail-on-risky --fail-on-deprecation --fail-on-phpunit-deprecation

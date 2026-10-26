@@ -7,7 +7,14 @@ trust_file="${SSL_CERT_FILE:-/etc/ssl/certs/ca-certificates.crt}"
 if [[ -f "$trust_file" ]]; then
   trust_args=(--volume "$trust_file:/run/host-ca.pem:ro" --env SSL_CERT_FILE=/run/host-ca.pem --env CURL_CA_BUNDLE=/run/host-ca.pem --env COMPOSER_CAFILE=/run/host-ca.pem)
 fi
+runtime_env_args=()
+while IFS= read -r variable_name; do
+  case "$variable_name" in
+    APP_*|DB_*|TELEGRAM_*|ETHEREUM_*|TRON_*|ACCESS_*|OPERATIONS_*|RPC_*|RECONCILIATION_*|CACHE_STORE|SESSION_DRIVER|QUEUE_CONNECTION|LOG_CHANNEL|LOG_LEVEL)
+      runtime_env_args+=(--env "$variable_name") ;;
+  esac
+done < <(compgen -e)
 exec docker run --rm --init --user "$(id -u):$(id -g)" \
   --env HTTP_PROXY --env HTTPS_PROXY --env NO_PROXY --env http_proxy --env https_proxy --env no_proxy \
-  "${trust_args[@]}" --volume "$repository_root:/app" --workdir /app \
+  "${runtime_env_args[@]}" "${trust_args[@]}" --volume "$repository_root:/app" --workdir /app \
   coin-bot-php:8.5 "$@"

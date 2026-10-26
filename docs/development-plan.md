@@ -2,7 +2,7 @@
 
 Current user scope: development only. Live account/recipient checks and production launch are deferred until explicitly requested.
 
-Status: implementation in progress. See the stage table and [development evidence](development-log.md) for completed work and outstanding live gates. Existing research probes alone are not application acceptance tests.
+Status: development implementation and offline verification completed for P01-P12; live acceptance and P13 are deferred. See the stage table and [development evidence](development-log.md) for completed work and outstanding live gates. Existing research probes alone are not application acceptance tests.
 
 Scope: PHP 8.5, Laravel 13, SQLite; official USDT on Ethereum and TRON; approximately 100 distinct addresses shared across multiple isolated users; individual key-based activation; finalized incoming/outgoing transfer notifications. See [the architecture](architecture.md) for the governing decisions and delivery limitations.
 
@@ -10,27 +10,27 @@ Scope: PHP 8.5, Laravel 13, SQLite; official USDT on Ethereum and TRON; approxim
 
 Use stable stage IDs P01-P13 in implementation tasks, commits, and pull requests. Track each stage as `planned`, `in_progress`, `blocked`, `deferred`, or `done`, with evidence linked when it is complete. Stage numbering describes the recommended order; independent work may proceed when external prerequisites block live checks.
 
-A stage is done only when its deliverables and required acceptance checks pass. Record simulated, live, skipped, and blocked checks separately. Test each feature in its own stage; P12 combines them into release-level acceptance rather than postponing correctness tests until the end. Complete relevant checks and commit/push/merge automatically within the task's authorized scope, following repository instructions.
+The Development status column is done only when the scoped implementation and development checks pass. It does not close deferred live/operational acceptance in the final column or claim production readiness. Full release requires those gates too. Record simulated, live, skipped, and blocked checks separately. Test each feature in its own stage; P12 combines them into release-level acceptance rather than postponing correctness tests until the end. Complete relevant checks and commit/push/merge automatically within the task's authorized scope, following repository instructions.
 
 Missing production credentials do not block fixture-based implementation. They do block the affected live validation and production launch. Receive values through secure environment configuration, never repository files or chat. Do not buy services or send messages to unapproved recipients as part of planning or offline testing.
 
 ## Stage overview
 
-| ID | Stage | Main result | Dependencies | Status |
-| --- | --- | --- | --- | --- |
-| P01 | Runtime and project foundation | Reproducible Laravel application and CI | None | done |
-| P02 | Multi-user domain and persistence | Isolated ownership, ledger, cursors, and outbox schema | P01 | done |
-| P03 | Individual access keys | Issuance, single-use activation, expiry, and revocation | P02 | done |
-| P04 | RPC adapters and provider capabilities | Validated chain clients and capability matrix | P01, P02 | blocked |
-| P05 | Durable scanning engine | Atomic range processing and resumable coverage | P02, P04 | done |
-| P06 | Ethereum USDT monitoring | Finalized Ethereum ingestion | P05 | done |
-| P07 | TRON USDT monitoring | Solidified TRON ingestion and native fallback | P05 | done |
-| P08 | User wallets and historical import | Scoped administration, watch-set cutovers, and backfill | P03, P06, P07 | done |
-| P09 | Telegram activation and delivery | Authorized enrollment and durable notifications | P03, P05, P08 | blocked |
-| P10 | Independent reconciliation and failover | Detect omissions and recover provider outages | P06, P07, P08, P09 | deferred |
-| P11 | Deployment, monitoring, and backups | Supervised single-host service and recoverable state | P09, P10 | deferred |
-| P12 | Release acceptance and recovery drills | Measured correctness, load, quota, and restore evidence | P10, P11 | planned |
-| P13 | Production launch | Verified authorized deployment and operational handover | P12 | planned |
+| ID | Stage | Main result | Dependencies | Development status | Live / external acceptance |
+| --- | --- | --- | --- | --- | --- |
+| P01 | Runtime and project foundation | Reproducible Laravel application and CI | None | done | Verified clean setup and CI |
+| P02 | Multi-user domain and persistence | Isolated ownership, ledger, cursors, and outbox schema | P01 | done | Not required |
+| P03 | Individual access keys | Issuance, single-use activation, expiry, and revocation | P02 | done | Not required |
+| P04 | RPC adapters and provider capabilities | Validated chain clients and capability matrix | P01, P02 | done | Deferred: actual account retention, quota, secondary certification |
+| P05 | Durable scanning engine | Atomic range processing and resumable coverage | P02, P04 | done | Not required |
+| P06 | Ethereum USDT monitoring | Finalized Ethereum ingestion | P05 | done | Public mainnet verified; paid account gate remains P04 |
+| P07 | TRON USDT monitoring | Solidified TRON ingestion and native fallback | P05 | done | Public mainnet verified; paid account gate remains P04 |
+| P08 | User wallets and historical import | Scoped administration, watch-set cutovers, and backfill | P03, P06, P07 | done | Not required |
+| P09 | Telegram activation and delivery | Authorized enrollment and durable notifications | P03, P05, P08 | done | Deferred: authorized live Telegram recipient |
+| P10 | Independent reconciliation and failover | Detect omissions and recover provider outages | P06, P07, P08, P09 | done | Deferred: actual independent account recovery capacity |
+| P11 | Deployment, monitoring, and backups | Supervised single-host service and recoverable state | P09, P10 | done | Deferred: off-host storage, external monitor, host-loss drill |
+| P12 | Release acceptance and recovery drills | Measured correctness, load, quota, and restore evidence | P10, P11 | done | Deferred: live capacity and operational acceptance |
+| P13 | Production launch | Verified authorized deployment and operational handover | P12 | deferred | Deferred by user: production launch and observation |
 
 ## P01 - Runtime and project foundation
 

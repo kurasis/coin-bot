@@ -3,6 +3,7 @@
 return [
     'token' => env('TELEGRAM_BOT_TOKEN'),
     'api_url' => 'https://api.telegram.org',
+    'staging_chat_id' => env('TELEGRAM_STAGING_CHAT_ID'),
     'poll_timeout' => (int) env('TELEGRAM_POLL_TIMEOUT', 25),
     'connect_timeout' => (int) env('TELEGRAM_CONNECT_TIMEOUT', 15),
     'request_timeout' => (int) env('TELEGRAM_REQUEST_TIMEOUT', 15),
