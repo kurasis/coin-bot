@@ -1,0 +1,12 @@
+Coin Bot complete native deployment package
+Source commit: 205fa5156f258690febae514951de0eab6a8ef02
+Application directory: /home/www/coinbot
+74 production dependencies and Composer included; 6060 ZIP members.
+All release-manifest hashes verified.
+Actual ZIP relocation, PHP autoload, package discovery, and memory-SQLite migrations passed.
+Native Debian 13 PHP8.5.12 installation in disposable environment passed: home-path app boot, private permissions, local SQLite migrations/integrity, parent permission preservation, env isolation, reinstall key preservation, missing-backup startup refusal.
+Systemctl reload was simulated; no live workers or web services started.
+Nginx policy: 40 HTTPS rejection checks passed; mapped systemd unit syntax passed.
+QuickNode assigned to Ethereum; Chainstack is an independent TRON secondary candidate.
+Dashboard JSON-RPC API and HTTP API fields mapped in the guide; no real credentials included.
+Production provider/recipient/off-host acceptance remains deferred.
