@@ -17,7 +17,7 @@ Missing production credentials do not block fixture-based implementation. They d
 | ID | Stage | Main result | Dependencies | Status |
 | --- | --- | --- | --- | --- |
 | P01 | Runtime and project foundation | Reproducible Laravel application and CI | None | done |
-| P02 | Multi-user domain and persistence | Isolated ownership, ledger, cursors, and outbox schema | P01 | planned |
+| P02 | Multi-user domain and persistence | Isolated ownership, ledger, cursors, and outbox schema | P01 | done |
 | P03 | Individual access keys | Issuance, single-use activation, expiry, and revocation | P02 | planned |
 | P04 | RPC adapters and provider capabilities | Validated chain clients and capability matrix | P01, P02 | planned |
 | P05 | Durable scanning engine | Atomic range processing and resumable coverage | P02, P04 | planned |
