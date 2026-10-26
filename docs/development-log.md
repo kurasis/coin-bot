@@ -82,3 +82,9 @@ P04 follow-up: added read-only `chain:probe` with mandatory address filters, bou
 ## P13 - Deferred by user
 
 No production host is selected, no paid services were purchased, no real Telegram messages were sent, and no production deployment was performed. Future launch must close the release checklist's actual-account and authorized-recipient gates.
+
+## P12 follow-up - Fresh environment configuration regression
+
+- The first full CI run with the expanded environment example exposed a difference between missing and blank history settings. Blank/whitespace floors now normalize to unknown while an explicitly verified genesis floor of `0` remains distinct. Retention safety checks were preserved.
+- Added four real bootstrapped-process configuration cases covering blank, whitespace, genesis, and a retained-height value.
+- Replayed clean-checkout initialization from the full `.env.example` in a separate export with locked dependencies, then ran the entire strict suite: **167 tests / 911 assertions passed**. Existing development configuration/database were untouched.
