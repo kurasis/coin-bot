@@ -16,6 +16,8 @@ Current scope is development only: production deployment and real recipient deli
 
 For a later server installation, see the [native Debian 13 deployment guide](docs/deploy-debian13.md) and [Telegram-only website access](docs/telegram-only-website.md).
 
+The complete release ZIP includes production Composer dependencies and Composer itself. On a fresh Debian 13 server, `sudo bash deploy/install-debian13.sh` prepares the application; `sudo coin-bot` provides enrollment, startup, and local administration. To build this package from committed source, use `bin/release` on the build machine.
+
 Repository documentation and code use English.
 
 ## Local development

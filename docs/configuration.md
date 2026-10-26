@@ -15,6 +15,7 @@ Copy `.env.example` through `bin/setup` and supply any future credentials throug
 | `deploy/compose.yaml` | Optional future process supervision and local persistent volumes; not automatically launched |
 | `deploy/systemd/` | Native Debian worker supervision, fixed worker commands, and restricted writable paths |
 | `deploy/nginx/`, `deploy/php-fpm/` | Optional Telegram-source-only HTTPS website and private application FPM pool |
+| `deploy/install-debian13.sh`, `deploy/coin-bot` | Full-archive first installation and short native administration commands |
 
 ## Provider settings
 
@@ -53,6 +54,6 @@ Telegram usernames remain discoverable; this policy controls application replies
 
 For optional future Compose deployment, set `COIN_BOT_BACKUP_PATH` to a protected verified off-host backup mount and choose `COIN_BOT_UID/GID`. Keep `APP_KEY` separately and securely backed up; a proxy placeholder cannot replace a raw local encryption key. Production settings are not needed to run offline tests. See [operations](operations.md) for enrollment bootstrap, supervision, health, and fenced restore.
 
-For native deployment, use the [Debian 13 guide](deploy-debian13.md): the database is `/var/lib/coin-bot/database.sqlite`, encrypted backups use `/mnt/coin-bot-backups`, and Laravel reads the private `.env` directly. Container-specific `COIN_BOT_UID/GID/BACKUP_PATH` settings are unused. Optional web access uses Nginx source-IP rules; it does not introduce Telegram webhooks.
+For native deployment, use the [Debian 13 guide](deploy-debian13.md): the full ZIP includes Composer and locked production dependencies, and its first-install script prepares PHP, the private configuration, SQLite, and systemd without launching workers. The database is `/var/lib/coin-bot/database.sqlite`, encrypted backups use `/mnt/coin-bot-backups`, and Laravel reads the private `.env` directly. Container-specific `COIN_BOT_UID/GID/BACKUP_PATH` settings are unused. Optional web access uses Nginx source-IP rules; it does not introduce Telegram webhooks.
 
 Cloud environment draft settings contain installation/start instructions and future integration requirements. Saving those declarations neither supplies values nor launches processes; the development snapshot is separate from production deployment.

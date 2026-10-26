@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'HELP'
+Usage: sudo coin-bot enroll|start|stop|status|ARTISAN_COMMAND [arguments]
+  enroll  Start private enrollment and print one individual activation key.
+  start   Start and enable all configured workers after wallet setup.
+  stop    Stop every Coin Bot worker.
+  status  Show sanitized operational health.
+Other arguments run the corresponding Artisan command as the application user.
+HELP
+}
+
+if [[ $# == 0 || ${1:-} == --help || ${1:-} == help ]]; then usage; exit 0; fi
+if [[ $EUID != 0 ]]; then echo 'Run with sudo.' >&2; exit 1; fi
+if [[ ! -f /srv/coin-bot/vendor/autoload.php || ! -f /srv/coin-bot/.env ]]; then
+  echo 'Install the full archive first.' >&2; exit 1
+fi
+cd /srv/coin-bot
+runtime=(runuser -u coin-bot -- env -i PATH=/usr/bin:/bin HOME=/var/lib/coin-bot)
+artisan() { "${runtime[@]}" /usr/bin/php8.5 /srv/coin-bot/artisan "$@"; }
+check_start() {
+  if ! mountpoint -q /mnt/coin-bot-backups; then
+    echo 'Mount the protected off-host backup destination at /mnt/coin-bot-backups before startup.' >&2
+    exit 1
+  fi
+  if ! "${runtime[@]}" test -w /mnt/coin-bot-backups; then
+    echo 'Allow the coin-bot user to write to the backup mount.' >&2
+    exit 1
+  fi
+  "${runtime[@]}" /usr/bin/php8.5 /srv/coin-bot/deploy/native-preflight.php "$1"
+}
+
+case "$1" in
+  enroll)
+    if [[ $# != 1 ]]; then usage >&2; exit 64; fi
+    check_start enroll
+    artisan ops:backup
+    systemctl start coin-bot@telegram-updates coin-bot@telegram-delivery coin-bot@backups
+    artisan access:issue
+    ;;
+  start)
+    if [[ $# != 1 ]]; then usage >&2; exit 64; fi
+    check_start start
+    artisan ops:backup
+    systemctl enable --now coin-bot.target
+    echo 'Workers started. Use sudo coin-bot status after initial reconciliation.'
+    ;;
+  stop)
+    systemctl stop coin-bot.target 'coin-bot@*.service'
+    ;;
+  status)
+    artisan ops:health
+    ;;
+  *) artisan "$@" ;;
+esac

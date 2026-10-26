@@ -1,0 +1,191 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 0022
+
+repository_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+if [[ "${1:-}" == --help || "${1:-}" == -h ]]; then
+  cat <<'HELP'
+Usage: bin/release [OUTPUT_DIRECTORY] [GIT_REF]
+
+Build a complete ZIP from committed source with locked production dependencies
+and Composer included. Defaults: ../artifacts and HEAD. Requires Docker, Git,
+Python 3, and outbound package access on the build machine only.
+
+The target Debian server does not need Docker, Git, or a Composer download.
+Ignored local configuration, databases, logs, and development vendor files are
+never copied. Uncommitted source changes are not included; commit first.
+HELP
+  exit 0
+fi
+if (( $# > 2 )); then
+  echo 'Usage: bin/release [OUTPUT_DIRECTORY] [GIT_REF]' >&2
+  exit 64
+fi
+for required_command in git docker python3 tar; do
+  command -v "$required_command" >/dev/null || { echo "Missing build tool: $required_command" >&2; exit 1; }
+done
+
+output_argument="${1:-$repository_root/../artifacts}"
+mkdir -p -- "$output_argument"
+output_directory="$(cd -- "$output_argument" && pwd -P)"
+revision="$(git -C "$repository_root" rev-parse --verify --end-of-options "${2:-HEAD}^{commit}")"
+short_revision="$(git -C "$repository_root" rev-parse --short=7 "$revision")"
+source_timestamp="$(git -C "$repository_root" show -s --format=%ct "$revision")"
+release_directory="$(mktemp -d "${TMPDIR:-/tmp}/coin-bot-release.XXXXXXXX")"
+candidate_directory=''
+trap 'rm -rf -- "$release_directory"; if [[ -n "$candidate_directory" ]]; then rm -rf -- "$candidate_directory"; fi' EXIT
+candidate_directory="$(mktemp -d "$output_directory/.coin-bot-release.XXXXXXXX")"
+git -C "$repository_root" archive --format=tar "$revision" | tar -xf - -C "$release_directory"
+
+# Source is exported independently of the working checkout's ignored artifacts.
+python3 - "$release_directory" <<'PY'
+from pathlib import Path
+import sys
+
+root = Path(sys.argv[1])
+for path in root.rglob('*'):
+    if path.is_symlink():
+        raise SystemExit('Release source contains an unexpected symlink.')
+    if not path.is_file():
+        continue
+    if ((path.name.startswith('.env') and path.name != '.env.example')
+            or path.name == 'auth.json'
+            or path.suffix.lower() in {'.sqlite', '.db', '.log', '.key', '.pem', '.cbk'}):
+        raise SystemExit('Release source contains a prohibited local artifact.')
+PY
+
+# The checked-in Dockerfile pins both PHP and Composer by digest.
+"$release_directory/bin/build"
+export DOCKER_CONFIG="${DOCKER_CONFIG:-/tmp/coin-bot-docker}"
+trust_args=()
+trust_file="${SSL_CERT_FILE:-/etc/ssl/certs/ca-certificates.crt}"
+if [[ -f "$trust_file" ]]; then
+  trust_args=(--volume "$trust_file:/run/host-ca.pem:ro" --env SSL_CERT_FILE=/run/host-ca.pem --env CURL_CA_BUNDLE=/run/host-ca.pem --env COMPOSER_CAFILE=/run/host-ca.pem)
+fi
+
+# Deliberately do not use bin/app: release builds must not inherit bot, provider,
+# application, database, Composer-auth, or deployment environment variables.
+runtime=(docker run --rm --init --user "$(id -u):$(id -g)" \
+  --env HTTP_PROXY --env HTTPS_PROXY --env NO_PROXY --env http_proxy --env https_proxy --env no_proxy \
+  --env COMPOSER_HOME=/tmp/release-composer --env COMPOSER_CACHE_DIR=/tmp/release-composer-cache \
+  --env COMPOSER_ALLOW_SUPERUSER=1 --env APP_ENV=testing --env APP_DEBUG=false \
+  --env DB_CONNECTION=sqlite --env DB_DATABASE=:memory: \
+  "${trust_args[@]}")
+"${runtime[@]}" --volume "$release_directory:/app" --workdir /app \
+  coin-bot-php:8.5 sh -eu -c '
+    mkdir -p tools
+    cp /usr/local/bin/composer tools/composer.phar
+    php tools/composer.phar --no-plugins validate --strict
+    php tools/composer.phar install --no-dev --no-scripts --no-plugins --no-interaction --prefer-dist --optimize-autoloader
+    php tools/composer.phar --no-plugins check-platform-reqs --no-dev
+    php artisan package:discover --no-ansi
+  '
+
+python3 - "$release_directory" "$candidate_directory" "$revision" "$short_revision" "$source_timestamp" <<'PY'
+from pathlib import Path
+from zipfile import ZipFile, ZipInfo, ZIP_DEFLATED
+import datetime
+import hashlib
+import json
+import os
+import stat
+import sys
+import tempfile
+
+root = Path(sys.argv[1]).resolve()
+output = Path(sys.argv[2])
+revision, short_revision, source_timestamp = sys.argv[3], sys.argv[4], int(sys.argv[5])
+
+# Laravel's discovered packages/services are regenerated at the installation
+# path. The archive must never carry cached configuration or runtime state.
+for directory in [root / 'bootstrap/cache', root / 'storage']:
+    for path in sorted(directory.rglob('*'), reverse=True):
+        if path.is_file() and path.name != '.gitignore':
+            path.unlink()
+        elif path.is_symlink():
+            raise SystemExit('Generated runtime state contains an unexpected symlink.')
+
+files = {}
+for path in sorted(root.rglob('*')):
+    if path.is_symlink():
+        target = path.resolve()
+        if not target.is_relative_to(root) or not target.is_file():
+            raise SystemExit('Release dependency contains an escaping or directory symlink.')
+    if not path.is_file():
+        continue
+    relative = path.relative_to(root).as_posix()
+    if (any(part in {'.git', 'node_modules'} for part in path.relative_to(root).parts)
+            or (path.name.startswith('.env') and path.name != '.env.example')
+            or path.name == 'auth.json'
+            or path.suffix.lower() in {'.sqlite', '.db', '.log', '.key', '.pem', '.cbk'}):
+        raise SystemExit('Release contains a prohibited configuration or runtime artifact.')
+    files[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
+
+for required in ['vendor/autoload.php', 'vendor/composer/installed.json', 'tools/composer.phar', '.env.example', 'composer.lock']:
+    if required not in files:
+        raise SystemExit('Release is missing a required runtime component.')
+installed = json.loads((root / 'vendor/composer/installed.json').read_text())
+if installed.get('dev') is not False:
+    raise SystemExit('Development dependencies must not be included in the full release.')
+for path in (root / 'vendor/composer').glob('autoload_*.php'):
+    content = path.read_bytes()
+    if str(root).encode() in content or b'/workspace/coin-bot/' in content:
+        raise SystemExit('Composer autoload data contains a build-machine path.')
+
+manifest = {
+    'format': 1,
+    'git_commit': revision,
+    'source_date_epoch': source_timestamp,
+    'files': files,
+}
+(root / 'release-manifest.json').write_text(json.dumps(manifest, indent=2, sort_keys=True) + '\n')
+files['release-manifest.json'] = hashlib.sha256((root / 'release-manifest.json').read_bytes()).hexdigest()
+timestamp = datetime.datetime.fromtimestamp(max(315532800, min(4354819198, source_timestamp)), datetime.timezone.utc).timetuple()[:6]
+destination = output / f'coin-bot-full-{short_revision}.zip'
+descriptor, temporary = tempfile.mkstemp(prefix='.coin-bot-release-', suffix='.zip', dir=output)
+os.close(descriptor)
+try:
+    with ZipFile(temporary, 'w', compression=ZIP_DEFLATED, compresslevel=9) as archive:
+        for relative in sorted(files):
+            path = root / relative
+            mode = 0o755 if path.stat().st_mode & 0o111 else 0o644
+            entry = ZipInfo('coin-bot/' + relative, timestamp)
+            entry.create_system = 3
+            entry.external_attr = (stat.S_IFREG | mode) << 16
+            entry.compress_type = ZIP_DEFLATED
+            archive.writestr(entry, path.read_bytes(), compress_type=ZIP_DEFLATED, compresslevel=9)
+    with ZipFile(temporary) as archive:
+        if archive.testzip() is not None:
+            raise SystemExit('Full ZIP integrity verification failed.')
+    os.chmod(temporary, 0o644)
+    os.replace(temporary, destination)
+finally:
+    Path(temporary).unlink(missing_ok=True)
+digest = hashlib.sha256(destination.read_bytes()).hexdigest()
+destination.with_suffix('.zip.sha256').write_text(f'{digest}  {destination.name}\n')
+print(f'Full ZIP candidate prepared: {destination.name}')
+print(f'Committed source: {revision}')
+print(f'Files: {len(files)}; archive bytes: {destination.stat().st_size:,}')
+print(f'SHA-256: {digest}')
+PY
+
+# Extract the actual archive at a different path in a fresh runtime. The only
+# database is memory SQLite, and no application credentials are forwarded.
+"${runtime[@]}" --volume "$candidate_directory/coin-bot-full-$short_revision.zip:/run/coin-bot-full.zip:ro" --workdir /tmp \
+  coin-bot-php:8.5 sh -eu -c '
+    mkdir /tmp/relocation
+    unzip -q /run/coin-bot-full.zip -d /tmp/relocation
+    cd /tmp/relocation/coin-bot
+    test ! -e .env
+    test ! -e bootstrap/cache/config.php
+    test ! -e bootstrap/cache/packages.php
+    test ! -e bootstrap/cache/services.php
+    php tools/composer.phar --no-plugins check-platform-reqs --no-dev
+    php artisan package:discover --no-ansi
+    php artisan migrate --force --no-ansi
+    php -r '\''require "vendor/autoload.php"; $file = (new ReflectionClass(App\Telegram\TelegramPoller::class))->getFileName(); if (!str_starts_with($file, getcwd()."/app/")) { throw new RuntimeException("Relocated autoload points outside the extracted application."); } echo "Relocated application boot and memory-SQLite migrations passed.\n";'\''
+  '
+
+mv -- "$candidate_directory/coin-bot-full-$short_revision.zip" "$output_directory/coin-bot-full-$short_revision.zip"
+mv -- "$candidate_directory/coin-bot-full-$short_revision.zip.sha256" "$output_directory/coin-bot-full-$short_revision.zip.sha256"
+echo "Verified full release: $output_directory/coin-bot-full-$short_revision.zip"
