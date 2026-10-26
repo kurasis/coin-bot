@@ -45,7 +45,7 @@ class AccessService
         return new IssuedKey($id, $token, $expiresAt, $grantExpiresAt);
     }
 
-    public function activate(string $token, string|int $telegramUserId, ?int $updateId = null): ActivationResult
+    public function activate(#[\SensitiveParameter] string $token, string|int $telegramUserId, ?int $updateId = null): ActivationResult
     {
         $telegramUserId = (string) $telegramUserId;
         if (! preg_match('/^[1-9][0-9]{0,18}$/D', $telegramUserId) || ($updateId !== null && $updateId < 0)) {

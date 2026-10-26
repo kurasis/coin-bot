@@ -24,7 +24,7 @@ Missing production credentials do not block fixture-based implementation. They d
 | P06 | Ethereum USDT monitoring | Finalized Ethereum ingestion | P05 | done |
 | P07 | TRON USDT monitoring | Solidified TRON ingestion and native fallback | P05 | done |
 | P08 | User wallets and historical import | Scoped administration, watch-set cutovers, and backfill | P03, P06, P07 | done |
-| P09 | Telegram activation and delivery | Authorized enrollment and durable notifications | P03, P05, P08 | planned |
+| P09 | Telegram activation and delivery | Authorized enrollment and durable notifications | P03, P05, P08 | blocked |
 | P10 | Independent reconciliation and failover | Detect omissions and recover provider outages | P06, P07, P08, P09 | planned |
 | P11 | Deployment, monitoring, and backups | Supervised single-host service and recoverable state | P09, P10 | planned |
 | P12 | Release acceptance and recovery drills | Measured correctness, load, quota, and restore evidence | P10, P11 | planned |

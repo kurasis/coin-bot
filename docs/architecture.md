@@ -41,6 +41,8 @@ The initial access mechanism is an individual, single-use activation key:
 4. Concurrent redemption by different users must yield exactly one successful binding. Redelivery of the same Telegram update is idempotent; it must not issue another grant. An already consumed key is not a reusable shared password.
 5. Operators can revoke an unused key or an activated grant. Check grant validity during wallet administration, subscription changes, outbox creation, and immediately before sending. Revocation removes that grant's pending-delivery authorizations; cancel a delivery only if no other valid authorizer remains. Revocation cannot retract a Telegram request already in flight.
 
+Renewing a key while access is active preserves `/stop` and destination restrictions. Activating fresh access after expiry/revocation enables private delivery from the new recorded monitoring boundary.
+
 Unknown users can see only a neutral activation prompt. Rate-limit invalid attempts without exposing whether a key belongs to another user. Operator privileges are configured separately from ordinary access grants; a user key never grants global administration. Keep operator actions auditable without recording raw secrets.
 
 Enforce user ownership in application services and queries, including CLI operations, exports, historical results, and recipient routing. Test isolation using two users following different wallets and two users following the same wallet. A user's activation or backfill must not expose another user's records or change their notification policy. Private labels must not leak into shared destinations.

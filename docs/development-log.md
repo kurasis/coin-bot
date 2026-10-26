@@ -47,3 +47,11 @@ P04 follow-up: added read-only `chain:probe` with mandatory address filters, bou
 - Separate subscription notification floors preserve silent history import. Explicit historical delivery is scoped and recorded on each authorization. Reenrollment restores scan membership without rewinding coverage; an already-active key renewal preserves pending delivery boundaries.
 - Regression tests verify adding a wallet never cancels `/stop`, old reconciliation cannot send silent history, and an in-flight scan cannot commit across a cutover.
 - Added shared operational maintenance/heartbeat primitives used by historical workers; deployment/backup validation remains P11.
+
+## P09 - Implemented; live recipient gate blocked
+
+- Implemented private-chat key enrollment with durable offsets/replies, authorized isolated notifications, atomic expiring leases, shared rate limits, retries, permanent-failure handling, replay, and maintenance checks.
+- Telegram suite: 22 tests / 98 assertions passed. After global unexpected-HTTP blocking, combined Telegram/blockchain suites passed 48 tests / 160 assertions. No external Telegram messages were sent.
+- Lease-expiry and redirect regressions prevent avoidable duplicate sends and credential forwarding. Active key renewal preserves `/stop`, destination restrictions, and notification boundaries. Actual inactive reenrollment enables private delivery from the new recorded boundary.
+- Added an operator-only user-identity lookup for safely assigning wallets after enrollment. Activation parameters are marked sensitive in stack traces; local environment examples contain no credential values.
+- Actual bot credentials and an explicitly authorized staging recipient remain required for live delivery acceptance.
