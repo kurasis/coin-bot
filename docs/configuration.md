@@ -40,7 +40,15 @@ There is no default public production provider or fabricated API key. Independen
 
 Keep the existing QuickNode Ethereum Mainnet endpoint as `ETHEREUM_SECONDARY_RPC_URL`; Alchemy remains the independent Ethereum primary. A second QuickNode endpoint is unnecessary for the proposed TRON configuration: use TronGrid as primary and create one **TRON Mainnet** node in [Chainstack](https://console.chainstack.com/) as the independent secondary candidate.
 
-For that Chainstack node's authenticated HTTPS base URL `B`, set `TRON_SECONDARY_NATIVE_URL` to `B` and `TRON_SECONDARY_RPC_URL` to `B/jsonrpc` (append exactly once). Leave `TRON_SECONDARY_API_KEY` empty when the URL contains the account authentication. The [official API reference](https://docs.chainstack.com/reference/tron-api-reference) documents these interfaces on one node endpoint. Treat the URL as a credential and keep it in the private `.env` only.
+Copy the links from the Chainstack node's **Access and credentials** panel:
+
+| Chainstack field | Application setting |
+| --- | --- |
+| **JSON-RPC API** | `TRON_SECONDARY_RPC_URL`: copy the complete link, including its `/jsonrpc` suffix |
+| **HTTP API** | `TRON_SECONDARY_NATIVE_URL`: copy this link and remove a final `/wallet` or `/wallet/` suffix if present |
+| No separate header key | `TRON_SECONDARY_API_KEY`: leave empty; authentication is in the links |
+
+The **Solidity HTTP API** and **gRPC endpoint** links are not entered separately: the application appends `/walletsolidity/...` to the native base itself. Do not paste a suffix twice. The [official API reference](https://docs.chainstack.com/reference/tron-api-reference) documents these interfaces on one node endpoint. Treat the complete URLs as credentials and keep them in the private `.env` only.
 
 Chainstack advertises a free TRON developer node on its [TRON page](https://chainstack.com/build-better-with-tron/). Verify the actual account's limits, retained history, and native receipt fallback before production; this is a configuration option, not account certification. Keep history floors blank until verified. No paid provider or additional endpoint has been purchased.
 
