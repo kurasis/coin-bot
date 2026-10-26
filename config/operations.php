@@ -1,11 +1,12 @@
 <?php
 
 return [
-    'state_directory' => storage_path('app/operations'),
+    'state_directory' => env('OPERATIONS_STATE_DIRECTORY', storage_path('app/operations')),
     'backup_directory' => env('OPERATIONS_BACKUP_DIRECTORY', storage_path('app/backups')),
     'backup_retention' => (int) env('OPERATIONS_BACKUP_RETENTION', 1440),
     'max_backup_age_seconds' => (int) env('OPERATIONS_MAX_BACKUP_AGE', 180),
     'max_cursor_age_seconds' => (int) env('OPERATIONS_MAX_CURSOR_AGE', 1200),
+    'max_unreconciled_age_seconds' => (int) env('OPERATIONS_MAX_UNRECONCILED_AGE', 1800),
     'max_outbox_age_seconds' => (int) env('OPERATIONS_MAX_OUTBOX_AGE', 300),
     'max_heartbeat_age_seconds' => (int) env('OPERATIONS_MAX_HEARTBEAT_AGE', 120),
     'required_workers' => array_filter(explode(',', (string) env('OPERATIONS_REQUIRED_WORKERS', ''))),

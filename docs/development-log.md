@@ -62,3 +62,10 @@ P04 follow-up: added read-only `chain:probe` with mandatory address filters, bou
 - Reconciliation/blockchain suites: 47 tests / 165 assertions passed after review fixes. TRON native fallback remains available through the cache wrapper; unknown or insufficient account retention never certifies coverage. Upstream two-day Retry-After survives HTTP parsing and circuit persistence.
 - A conflict now defers pending notifications only for the affected chain, preserving healthy-chain delivery. Telegram suite after these cross-component regressions: 25 tests / 115 assertions passed.
 - Actual independent account retention/capacity checks are deferred because the user selected development-only scope.
+
+## P11 - Development implementation complete; external operation deferred
+
+- Added consistent SQLite online backups with authenticated streaming encryption, staged/validated access-invalidating restore, health reports, supervision configuration, and the operations runbook.
+- Operations suite: 12 tests / 58 assertions passed. Includes tamper/wrong-key/truncation protection, stale grant/key invalidation, reconciliation lag/missing-watermark detection, open circuits/conflicts, and healthy-backfill exclusions.
+- Actual local Compose smoke used a uniquely named disposable project and persistent volumes: prepare/migrate/backup startup passed, encrypted artifacts were created, backup worker restart created further artifacts, and current schema was verified. The smoke exposed a missing read-only mount target; committed `var/.gitignore` fixes it. Only the disposable project/volumes/artifacts were then removed. No production/Telegram/scanner services were launched.
+- Local backup behavior is not evidence of off-host persistence, external alerts, or measured full host-loss RPO/RTO; those checks are deferred.

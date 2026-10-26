@@ -1,0 +1,107 @@
+x-runtime: &runtime
+  image: coin-bot-php:8.5
+  user: "${COIN_BOT_UID:-1000}:${COIN_BOT_GID:-1000}"
+  working_dir: /app
+  init: true
+  restart: unless-stopped
+  stop_grace_period: 45s
+  env_file:
+    - ../.env
+  environment: &environment
+    APP_ENV: production
+    COIN_BOT_UID: "${COIN_BOT_UID:-1000}"
+    COIN_BOT_GID: "${COIN_BOT_GID:-1000}"
+    APP_DEBUG: "false"
+    DB_DATABASE: /app/var/database.sqlite
+    LOG_CHANNEL: stderr
+    OPERATIONS_BACKUP_DIRECTORY: /backups
+    OPERATIONS_REQUIRE_BACKUP: "true"
+    OPERATIONS_REQUIRED_WORKERS: scan-ethereum,scan-tron,telegram-poll,telegram-deliver,backfill,backups,reconcile-ethereum,reconcile-tron
+  volumes:
+    - ../:/app:ro
+    - database:/app/var
+    - storage:/app/storage
+    - cache:/app/bootstrap/cache
+    - "${COIN_BOT_BACKUP_PATH:?Set COIN_BOT_BACKUP_PATH to a protected backup mount}:/backups"
+  healthcheck:
+    test: [CMD, php, artisan, ops:health]
+    interval: 60s
+    timeout: 10s
+    start_period: 120s
+    retries: 3
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "3"
+
+services:
+  prepare:
+    <<: *runtime
+    user: "0:0"
+    restart: "no"
+    healthcheck:
+      disable: true
+    command: [sh, /app/deploy/prepare.sh]
+  migrate:
+    <<: *runtime
+    restart: "no"
+    healthcheck:
+      disable: true
+    depends_on:
+      prepare:
+        condition: service_completed_successfully
+    command: [php, artisan, migrate, --force]
+  ethereum:
+    <<: *runtime
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    command: [php, artisan, chain:scan, ethereum]
+  tron:
+    <<: *runtime
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    command: [php, artisan, chain:scan, tron]
+  telegram-updates:
+    <<: *runtime
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    command: [php, artisan, telegram:poll]
+  telegram-delivery:
+    <<: *runtime
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    command: [php, artisan, telegram:deliver]
+  backfill:
+    <<: *runtime
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    command: [php, artisan, wallet:backfill-run]
+  reconcile-ethereum:
+    <<: *runtime
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    command: [php, artisan, chain:reconcile, ethereum]
+  reconcile-tron:
+    <<: *runtime
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    command: [php, artisan, chain:reconcile, tron]
+  backups:
+    <<: *runtime
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    command: [php, artisan, ops:backup, --loop, --interval=60]
+
+volumes:
+  database:
+  storage:
+  cache:
