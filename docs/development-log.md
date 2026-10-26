@@ -23,3 +23,10 @@ All results below were obtained on PHP 8.5.12 / Laravel 13.38.0 on 2026-10-26. P
 - Access feature/concurrency suites: 12 tests / 72 assertions passed; the concurrency case used two independent PHP processes against one real SQLite database and produced one activation and one denial.
 - Pint passed all 13 access source/test files. Operator commands are local Artisan commands, not Telegram administration commands.
 - No live user keys were issued or sent; test keys are synthetic and isolated.
+
+## P04 - Implemented; production capability gate blocked
+
+- Ethereum/TRON clients validate network identity, bounded numeric ranges, indexed topic batches, canonical headers, complete receipts, malformed/HTTP-200 errors, rate limits, and sanitized connection failures. TLS verification remains enabled.
+- Blockchain feature suite: 21 tests / 47 assertions passed; Pint passed.
+- Live implemented-client probes succeeded against public Ethereum RPC and TronGrid: network identity, finality, filtered official-USDT logs, and full successful receipts.
+- Actual paid primary/secondary account credentials, retained history depth, quota, and recovery headroom are not configured or certified. Public endpoints are proof of implementation, not production SLA/plan evidence. See [provider capabilities](provider-capabilities.md).
