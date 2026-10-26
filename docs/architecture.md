@@ -104,6 +104,8 @@ For TRON, exercise `/walletsolidity/gettransactioninfobyblocknum` and block quer
 
 Wallet additions/removals create a new watch-set version with an atomic per-chain cutover block `H`, serialized with range completion. The new membership applies from `H+1`; new-wallet backfill covers its requested earlier start through `H`, if applicable. A newly added wallet receives a separate backfill job with its own start/end range and notification policy; never move the global cursor backward or mark old ranges covered for a wallet that was not watched then.
 
+Historical visibility and notification eligibility have separate boundaries. `user_wallets.start_block` may move earlier for an explicit historical import, while `wallet_subscriptions.notification_start_block` remains the live delivery floor. A scoped `--notify` backfill stores a durable `historical_override` on its authorizations; ordinary scans and reconciliation cannot infer that override. Reenrollment after expired/revoked access refreshes membership and moves notification floors to the recorded `H+1` cutover; renewal while already authorized preserves pending boundaries. Adding a wallet never re-enables a destination stopped by its owner.
+
 ### Finality and latency
 
 - **TRON:** notify from solidified state, which normally trails the latest head by approximately one minute. Add the polling and delivery delay; target approximately one to two minutes under normal conditions.

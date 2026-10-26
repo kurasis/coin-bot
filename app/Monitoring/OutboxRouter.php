@@ -12,13 +12,13 @@ use Illuminate\Support\Facades\DB;
 final class OutboxRouter
 {
     /** Must be called inside the transfer persistence transaction. */
-    public function enqueue(int $transferId, ?int $onlyUserWalletId = null): void
+    public function enqueue(int $transferId, ?int $onlyUserWalletId = null, bool $historical = false): void
     {
         $transfer = DB::table('transfers')->find($transferId);
         if ($transfer === null) {
             throw new ScanException('Cannot route an unknown transfer.');
         }
-        foreach ($this->eligibleForTransfer($transfer, $onlyUserWalletId) as $route) {
+        foreach ($this->eligibleForTransfer($transfer, $onlyUserWalletId, $historical) as $route) {
             $outbox = DB::table('notification_outbox')->where('transfer_id', $transferId)
                 ->where('destination_id', $route->destination_id)->where('notification_kind', 'transfer')->first();
             $outboxId = $outbox?->id ?? DB::table('notification_outbox')->insertGetId([
@@ -30,16 +30,32 @@ final class OutboxRouter
             if ($outbox !== null && in_array($outbox->status, ['sent', 'cancelled'], true)) {
                 continue;
             }
-            DB::table('outbox_authorizations')->insertOrIgnore([
+            $authorization = [
                 'outbox_id' => $outboxId, 'user_id' => $route->user_id,
                 'subscription_id' => $route->subscription_id, 'grant_id' => $route->grant_id,
+                'historical_override' => $historical,
                 'created_at' => now(), 'updated_at' => now(),
-            ]);
+            ];
+            DB::table('outbox_authorizations')->insertOrIgnore($authorization);
+            if ($historical) {
+                DB::table('outbox_authorizations')->where('outbox_id', $outboxId)
+                    ->where('subscription_id', $route->subscription_id)->where('grant_id', $route->grant_id)
+                    ->update(['historical_override' => true, 'updated_at' => now()]);
+            }
         }
     }
 
     /** @return Collection<int, object> */
-    public function eligibleForTransfer(object $transfer, ?int $onlyUserWalletId = null): Collection
+    public function eligibleForTransfer(object $transfer, ?int $onlyUserWalletId = null, bool $historical = false): Collection
+    {
+        if ($historical && $onlyUserWalletId === null) {
+            throw new ScanException('Historical notification routing must target one owned wallet.');
+        }
+
+        return $this->routesForTransfer($transfer, $onlyUserWalletId, ! $historical);
+    }
+
+    private function routesForTransfer(object $transfer, ?int $onlyUserWalletId, bool $applyNotificationFloor): Collection
     {
         $query = $this->routeQuery()->where('w.chain', $transfer->chain)
             ->where('uw.start_block', '<=', $transfer->block_number)
@@ -47,10 +63,13 @@ final class OutboxRouter
         if ($onlyUserWalletId !== null) {
             $query->where('uw.id', $onlyUserWalletId);
         }
+        if ($applyNotificationFloor) {
+            $query->where('s.notification_start_block', '<=', $transfer->block_number);
+        }
         $amount = new Amount($transfer->amount_raw);
 
         return $query->get([
-            's.id as subscription_id', 's.user_id', 's.destination_id', 's.direction', 's.min_amount',
+            's.id as subscription_id', 's.user_id', 's.destination_id', 's.direction', 's.min_amount', 's.notification_start_block',
             'uw.id as user_wallet_id', 'uw.label', 'w.address', 'g.id as grant_id',
             'd.chat_id', 'd.kind', 'd.approved_label', 'u.telegram_user_id',
         ])->filter(function (object $route) use ($transfer, $amount): bool {
@@ -80,10 +99,11 @@ final class OutboxRouter
         }
         $references = DB::table('outbox_authorizations')->where('outbox_id', $outboxId)->get();
 
-        return $this->eligibleForTransfer($transfer)->filter(fn (object $route): bool => (int) $route->destination_id === (int) $outbox->destination_id
+        return $this->routesForTransfer($transfer, null, false)->filter(fn (object $route): bool => (int) $route->destination_id === (int) $outbox->destination_id
             && $references->contains(fn (object $authorization): bool => (int) $authorization->user_id === (int) $route->user_id
                 && (int) $authorization->subscription_id === (int) $route->subscription_id
-                && (int) $authorization->grant_id === (int) $route->grant_id))->values();
+                && (int) $authorization->grant_id === (int) $route->grant_id
+                && ((bool) $authorization->historical_override || $transfer->block_number >= $route->notification_start_block)))->values();
     }
 
     private function routeQuery(): Builder

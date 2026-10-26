@@ -58,6 +58,7 @@ class BlockScanner
         bool $notify = true,
         ?int $onlyUserWalletId = null,
         ?int $endBlock = null,
+        bool $historical = false,
     ): ScanResult {
         if (app()->isDownForMaintenance()) {
             throw new ScanException('Scanning is disabled during maintenance.');
@@ -71,6 +72,9 @@ class BlockScanner
         $cursor = DB::table('scan_cursors')->find($cursorId);
         if ($cursor === null || $cursor->chain !== $client->chain() || $cursor->watch_set_id === null) {
             throw new ScanException('Cursor does not reference this chain and an explicit watch set.');
+        }
+        if ($historical && ($cursor->role !== 'backfill' || $onlyUserWalletId === null || ! $notify)) {
+            throw new ScanException('Historical notification override requires an explicitly scoped notifying backfill.');
         }
         if ($cursor->paused_at !== null) {
             throw new ScanException('This scan cursor is paused and requires operator investigation.');
@@ -99,7 +103,7 @@ class BlockScanner
         }
         $digest = self::digest($events);
 
-        DB::transaction(function () use ($cursor, $from, $to, $events, $boundary, $digest, $notify, $onlyUserWalletId): void {
+        DB::transaction(function () use ($cursor, $from, $to, $events, $boundary, $digest, $notify, $onlyUserWalletId, $historical): void {
             // Compare the immutable snapshot after HTTP work; another worker or a watch-set cutover wins safely.
             $changed = DB::table('scan_cursors')->where('id', $cursor->id)
                 ->where('last_block', $cursor->last_block)->where('last_block_hash', $cursor->last_block_hash)
@@ -122,7 +126,7 @@ class BlockScanner
                     $id = DB::table('transfers')->insertGetId($event + ['created_at' => now(), 'updated_at' => now()]);
                 }
                 if ($notify) {
-                    $this->router->enqueue($id, $onlyUserWalletId);
+                    $this->router->enqueue($id, $onlyUserWalletId, $historical);
                 }
             }
             $rangeIdentity = ['cursor_id' => $cursor->id, 'watch_set_id' => $cursor->watch_set_id, 'from_block' => $from, 'to_block' => $to];

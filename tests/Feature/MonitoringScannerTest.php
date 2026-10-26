@@ -140,6 +140,51 @@ class MonitoringScannerTest extends TestCase
         $this->assertSame($alice['user_id'], DB::table('outbox_authorizations')->sole()->user_id);
     }
 
+    public function test_normal_routing_honors_notification_floor_independently_of_history_start(): void
+    {
+        $sender = $this->address('ethereum', 1);
+        $owner = $this->member('1001', 'ethereum', $sender);
+        DB::table('wallet_subscriptions')->where('id', $owner['subscription_id'])->update(['notification_start_block' => 11]);
+        $client = $this->client('ethereum', $sender, $this->address('ethereum', 2));
+        $this->initialize($client);
+        (new BlockScanner)->scan($client);
+        $this->assertDatabaseCount('transfers', 1);
+        $this->assertDatabaseCount('notification_outbox', 0);
+    }
+
+    public function test_explicit_scoped_notifying_backfill_persists_the_floor_override(): void
+    {
+        $sender = $this->address('ethereum', 1);
+        $owner = $this->member('1001', 'ethereum', $sender);
+        $this->member('1002', 'ethereum', $sender);
+        DB::table('wallet_subscriptions')->update(['notification_start_block' => 11]);
+        $client = $this->client('ethereum', $sender, $this->address('ethereum', 2));
+        $cursor = $this->initialize($client);
+        DB::table('scan_cursors')->where('id', $cursor)->update(['role' => 'backfill', 'provider' => 'backfill:1']);
+        (new BlockScanner)->scanCursor($client, $cursor, 100, true, $owner['user_wallet_id'], 10, true);
+        $this->assertDatabaseCount('notification_outbox', 1);
+        $outbox = (int) DB::table('notification_outbox')->sole()->id;
+        $this->assertDatabaseHas('outbox_authorizations', ['outbox_id' => $outbox, 'user_id' => $owner['user_id'], 'historical_override' => true]);
+        $this->assertCount(1, (new OutboxRouter)->authorizedRoutes($outbox));
+        DB::table('access_grants')->where('id', $owner['grant_id'])->update(['revoked_at' => now()]);
+        $this->assertCount(0, (new OutboxRouter)->authorizedRoutes($outbox));
+    }
+
+    public function test_floor_override_cannot_be_used_for_an_ordinary_live_cursor(): void
+    {
+        $sender = $this->address('ethereum', 1);
+        $owner = $this->member('1001', 'ethereum', $sender);
+        $client = $this->client('ethereum', $sender, $this->address('ethereum', 2));
+        $cursor = $this->initialize($client);
+        $this->expectException(ScanException::class);
+        try {
+            (new BlockScanner)->scanCursor($client, $cursor, 100, true, $owner['user_wallet_id'], 10, true);
+        } finally {
+            $this->assertDatabaseCount('transfers', 0);
+            $this->assertDatabaseCount('notification_outbox', 0);
+        }
+    }
+
     public function test_silent_backfill_persists_ledger_without_notifications(): void
     {
         $sender = $this->address('ethereum', 1);

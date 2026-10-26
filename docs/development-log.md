@@ -39,3 +39,11 @@ P04 follow-up: added read-only `chain:probe` with mandatory address filters, bou
 - Monitoring suite: 21 tests / 73 assertions passed, including injected SQLite write failure, missing receipts, exact repeated logs, zero/max amounts, shared destinations, chain independence, and native TRON receipt fallback.
 - Live full Laravel-to-RPC-to-SQLite probes used disposable databases without subscriptions: Ethereum 26,278,475-26,278,477 yielded 2 expected/verified stored transfers from 296 official-USDT logs; TRON 87,454,942-87,454,944 yielded 1 expected/verified stored transfer from 201 logs. Coverage advanced exactly over each three-block range.
 - No Telegram messages were sent. Paid-provider certification remains the independent P04 gate.
+
+## P08 - Complete
+
+- Implemented user-scoped wallet commands, atomic/repeatable 100-record import, private destinations, immutable watch-set cutovers, and resumable owner-scoped backfill.
+- Wallet suite: 21 tests / 86 assertions passed. Combined wallet/scanner rerun: 45 tests / 168 assertions passed with warnings/risky tests treated as failures.
+- Separate subscription notification floors preserve silent history import. Explicit historical delivery is scoped and recorded on each authorization. Reenrollment restores scan membership without rewinding coverage; an already-active key renewal preserves pending delivery boundaries.
+- Regression tests verify adding a wallet never cancels `/stop`, old reconciliation cannot send silent history, and an in-flight scan cannot commit across a cutover.
+- Added shared operational maintenance/heartbeat primitives used by historical workers; deployment/backup validation remains P11.

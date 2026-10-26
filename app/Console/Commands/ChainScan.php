@@ -6,6 +6,7 @@ namespace App\Console\Commands;
 
 use App\Blockchain\ChainClientFactory;
 use App\Monitoring\BlockScanner;
+use App\Operations\Heartbeat;
 use Illuminate\Console\Command;
 use Throwable;
 
@@ -36,6 +37,9 @@ class ChainScan extends Command
         do {
             try {
                 $result = $scanner->scan($client, $range);
+                if (class_exists(Heartbeat::class)) {
+                    app(Heartbeat::class)->record('scan-'.$chain);
+                }
                 $this->line($result->idle ? 'No new finalized blocks.' : "Completed blocks {$result->fromBlock}-{$result->toBlock}: {$result->events} transfer events.");
             } catch (Throwable) {
                 // Upstream exception messages must never expose credential-bearing URLs or raw response bodies.
