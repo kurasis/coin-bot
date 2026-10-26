@@ -2,6 +2,7 @@
 
 return [
     'token' => env('TELEGRAM_BOT_TOKEN'),
+    'allowed_user_ids' => env('TELEGRAM_ALLOWED_USER_IDS', ''),
     'api_url' => 'https://api.telegram.org',
     'staging_chat_id' => env('TELEGRAM_STAGING_CHAT_ID'),
     'poll_timeout' => (int) env('TELEGRAM_POLL_TIMEOUT', 25),

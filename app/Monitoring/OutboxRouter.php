@@ -5,12 +5,15 @@ declare(strict_types=1);
 namespace App\Monitoring;
 
 use App\Domain\Amount;
+use App\Telegram\TelegramAudience;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 final class OutboxRouter
 {
+    public function __construct(private TelegramAudience $audience = new TelegramAudience) {}
+
     /** Must be called inside the transfer persistence transaction. */
     public function enqueue(int $transferId, ?int $onlyUserWalletId = null, bool $historical = false): void
     {
@@ -78,7 +81,8 @@ final class OutboxRouter
             $directionMatches = $route->direction === 'both'
                 || ($route->direction === 'incoming' && $incoming)
                 || ($route->direction === 'outgoing' && $outgoing);
-            if (! $directionMatches || $amount->compareTo(new Amount($route->min_amount)) < 0) {
+            if (! $directionMatches || $amount->compareTo(new Amount($route->min_amount)) < 0
+                || ! $this->audience->allows((string) $route->telegram_user_id)) {
                 return false;
             }
             if ($route->kind === 'private') {

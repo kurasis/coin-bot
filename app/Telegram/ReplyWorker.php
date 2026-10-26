@@ -4,11 +4,12 @@ namespace App\Telegram;
 
 use App\Access\AccessService;
 use App\Operations\MaintenanceGuard;
+use Illuminate\Support\Facades\DB;
 use LogicException;
 
 final class ReplyWorker
 {
-    public function __construct(private TelegramClient $client, private QueueLeases $leases, private DispatchRateGate $rateGate, private AccessService $access) {}
+    public function __construct(private TelegramClient $client, private QueueLeases $leases, private DispatchRateGate $rateGate, private AccessService $access, private TelegramAudience $audience) {}
 
     public function runOnce(): bool
     {
@@ -18,6 +19,11 @@ final class ReplyWorker
         $row = $this->leases->claim('telegram_replies');
         if ($row === null) {
             return false;
+        }
+        if (! $this->authorized($row)) {
+            $this->leases->release('telegram_replies', $row, 'cancelled', 'Private reply no longer authorized.');
+
+            return true;
         }
         if ((int) $row->attempts >= max(1, (int) config('telegram.max_attempts', 12))) {
             $this->leases->release('telegram_replies', $row, 'failed', 'Reply attempt limit reached.');
@@ -35,14 +41,16 @@ final class ReplyWorker
 
             return true;
         }
+        if (! $this->authorized($row)) {
+            $this->leases->release('telegram_replies', $row, 'cancelled', 'Private reply no longer authorized.');
+
+            return true;
+        }
         if (! $this->leases->beginAttempt('telegram_replies', $row)) {
             return true;
         }
         try {
-            $text = $row->user_id !== null && $this->access->activeGrant((int) $row->user_id) === null
-                ? 'Access inactive. Request a valid individual key from the operator.'
-                : $row->text;
-            $messageId = $this->client->sendMessage((string) $row->chat_id, $text);
+            $messageId = $this->client->sendMessage((string) $row->chat_id, $row->text);
             $this->leases->success('telegram_replies', $row, $messageId);
         } catch (TelegramException $exception) {
             if ($exception->status === 429) {
@@ -56,5 +64,13 @@ final class ReplyWorker
         }
 
         return true;
+    }
+
+    private function authorized(object $row): bool
+    {
+        return $row->user_id !== null
+            && $this->audience->allows((string) $row->chat_id)
+            && DB::table('users')->where('id', $row->user_id)->where('telegram_user_id', $row->chat_id)->exists()
+            && $this->access->activeGrant((int) $row->user_id) !== null;
     }
 }

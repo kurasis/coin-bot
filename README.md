@@ -4,7 +4,7 @@ A notification-only Telegram bot for official USDT transfers on Ethereum and TRO
 
 Stack: **PHP 8.5, Laravel 13, SQLite**. The service observes public blockchain data; it never holds private keys or signs transactions.
 
-Multiple users have isolated wallets, settings, and notifications. Access requires an individual activation key bound to the recipient's Telegram user ID.
+Multiple users have isolated wallets, settings, and notifications. Access requires an individual activation key bound to the recipient's Telegram user ID. Unknown/inactive users receive no replies. An optional `TELEGRAM_ALLOWED_USER_IDS` list further restricts enrollment and all outgoing messages; see [private access settings](docs/configuration.md#private-bot-access).
 
 See [the architecture and reliability design](docs/architecture.md) for the recommended approach and [the development plan](docs/development-plan.md) for stages P01-P13, dependencies, and acceptance criteria.
 

@@ -64,6 +64,8 @@ OPERATIONS_REQUIRED_WORKERS=scan-ethereum,scan-tron,telegram-poll,telegram-deliv
 
 Supply `TELEGRAM_BOT_TOKEN`, both Ethereum RPC URLs, both TRON RPC/native URLs, and required TRON API keys. Set each `*_HISTORY_START_BLOCK` only to verified account retention; blank means unknown. Other settings: [configuration](configuration.md).
 
+For access limited to known Telegram IDs, set `TELEGRAM_ALLOWED_USER_IDS` to their comma-separated numeric IDs before enrollment. They still need individual keys. Blank keeps invitation by key; strangers and invalid-key attempts receive no reply in either mode. In BotFather, use `/setjoingroups` → **Disable** to prevent adding the bot to groups.
+
 Mount a protected, writable, independently retained **off-host backup destination** at `/mnt/coin-bot-backups` and configure its persistent mount before continuing. A normal local directory is insufficient. Allow the `coin-bot` user to write there. The service refuses startup if this path is not a mount point; mount presence alone does not prove remote persistence.
 
 ```bash

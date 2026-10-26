@@ -37,6 +37,16 @@ There is no default public production provider or fabricated API key. Independen
 
 Bot credentials are `TELEGRAM_BOT_TOKEN`; `TELEGRAM_STAGING_CHAT_ID` only records a future permitted test target and does not enroll a user or trigger a send. Real destinations and private wallet settings are persisted per user after key activation. There is intentionally no global recipient ID that overrides tenant routing. Official mainnet token/network identities and private-only delivery policy remain protected application defaults, rather than user-submitted addresses or secrets.
 
+## Private bot access
+
+The bot responds only to users with active individual-key access in their own private chat. Unknown, expired, revoked, disabled, and group-chat users receive no reply. The exception is successful enrollment with a valid single-use key. Invalid activation attempts are silent for users without active access. Old anonymous replies and queued replies whose user/grant is no longer authorized are cancelled before sending.
+
+For a fixed recipient list, set `TELEGRAM_ALLOWED_USER_IDS` to comma-separated numeric Telegram user IDs, for example `123456789,987654321` (replace these placeholders). Whitespace around entries is accepted; usernames, wildcards, empty members, and malformed/nonstring settings deny everyone. The list restricts key activation, command replies, transfer routing, and pending deliveries. Listing an ID does **not** grant access: that person must still activate an individual key. Blank/unset means invitation by key without an additional ID restriction; it does not allow anonymous replies.
+
+Use IDs from trusted operator records, or `message.from.id` in your bot's own updates; never a mutable username. Configuration stays in memory in long-running processes. To change access safely, pause operations, stop **all** bot workers, edit `.env`, clear cached configuration, resume operations, and restart the full worker set using the native/Compose operations procedure. A request already sent to Telegram cannot be recalled. Removing an ID cancels affected pending delivery when processed; adding it again does not replay cancelled history. Revoke the user's grant as well when permanently withdrawing access.
+
+Telegram usernames remain discoverable; this policy controls application replies and notifications. In [BotFather](https://t.me/BotFather), disable joining groups with `/setjoingroups` → **Disable**. Telegram's `/setprivacy` setting controls group message visibility; it does not restrict private-chat access. Application checks ignore groups regardless of that setting.
+
 ## Development and future operations
 
 `.env.example` documents the supported bot/access/circuit/health settings with safe empty credential values. Per-provider optional tuning suffixes are listed above rather than duplicated four times in the example. CLI worker interval/range flags are discoverable with `php artisan <command> --help`; they do not start merely because configuration is present.

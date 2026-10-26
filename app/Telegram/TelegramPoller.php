@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\RateLimiter;
 
 final class TelegramPoller
 {
-    public function __construct(private TelegramClient $client, private AccessService $access) {}
+    public function __construct(private TelegramClient $client, private AccessService $access, private TelegramAudience $audience) {}
 
     public function runOnce(): int
     {
@@ -76,6 +76,11 @@ final class TelegramPoller
             return;
         }
         $actor = (string) $actor;
+        if (! $this->audience->allows($actor)) {
+            $this->record($id, 'ignored');
+
+            return;
+        }
         $limiter = 'telegram:commands:'.hash('sha256', $actor);
         if (RateLimiter::tooManyAttempts($limiter, 20)) {
             $this->record($id, 'rate_limited');
@@ -85,11 +90,11 @@ final class TelegramPoller
         RateLimiter::hit($limiter, 60);
         $text = is_string($message['text'] ?? null) ? $message['text'] : '';
         $user = DB::table('users')->where('telegram_user_id', $actor)->first();
-        $reply = 'Activate access with an individual key: /start <key>.';
-        $result = 'neutral';
+        $hadActiveAccess = $user !== null && $this->access->activeGrant((int) $user->id) !== null;
+        $reply = null;
+        $result = 'ignored';
         if (preg_match('/^\/start(?:@[A-Za-z0-9_]+)?\s+([A-Za-z0-9_-]{43})\s*$/D', $text, $matches)) {
             try {
-                $hadActiveAccess = $user !== null && $this->access->activeGrant((int) $user->id) !== null;
                 $activation = $this->access->activate($matches[1], $actor, $id);
                 $user = DB::table('users')->find($activation->userId);
                 $this->privateDestination((int) $user->id, $actor, true, $hadActiveAccess);
@@ -99,10 +104,12 @@ final class TelegramPoller
                 $reply = 'Access activated. Your notifications are private. Use /status, /stop, or /resume.';
                 $result = 'activated';
             } catch (AccessDenied) {
-                $reply = 'Access could not be activated. Request a valid individual key from the operator.';
+                if ($hadActiveAccess) {
+                    $reply = 'Access could not be activated. Request a valid individual key from the operator.';
+                }
                 $result = 'denied';
             }
-        } elseif ($user !== null && $this->access->activeGrant((int) $user->id) !== null) {
+        } elseif ($hadActiveAccess) {
             if (preg_match('/^\/stop(?:@[A-Za-z0-9_]+)?\s*$/D', $text)) {
                 $this->privateDestination((int) $user->id, $actor, false);
                 $reply = 'Your notifications are paused. Use /resume to enable them again.';
@@ -121,6 +128,9 @@ final class TelegramPoller
         }
         if (! DB::table('telegram_updates')->where('update_id', $id)->exists()) {
             $this->record($id, $result, $user?->id);
+        }
+        if ($reply === null) {
+            return;
         }
         DB::table('telegram_replies')->insertOrIgnore([
             'update_id' => $id, 'chat_id' => $actor, 'user_id' => $user?->id,

@@ -74,22 +74,24 @@ class TelegramTest extends TestCase
         $this->assertNull(DB::table('access_keys')->value('redeemed_at'));
     }
 
-    public function test_unknown_user_gets_only_a_neutral_prompt_and_no_admin_privileges(): void
+    public function test_unknown_user_gets_no_reply_or_admin_privileges(): void
     {
         Http::fake(['*/getUpdates' => Http::response(['ok' => true, 'result' => [$this->update(12, '9999', '/access:issue')]])]);
         app(TelegramPoller::class)->runOnce();
         $this->assertDatabaseCount('users', 0);
         $this->assertDatabaseCount('access_keys', 0);
-        $this->assertSame('Activate access with an individual key: /start <key>.', DB::table('telegram_replies')->value('text'));
+        $this->assertDatabaseCount('telegram_replies', 0);
+        $this->assertDatabaseHas('telegram_update_offsets', ['next_update_id' => 13]);
     }
 
-    public function test_invalid_activation_has_generic_response_and_does_not_persist_message_body(): void
+    public function test_invalid_activation_is_silent_and_does_not_persist_message_body(): void
     {
         $input = str_repeat('x', 43);
         Http::fake(['*/getUpdates' => Http::response(['ok' => true, 'result' => [$this->update(15, '1001', '/start '.$input)]])]);
         app(TelegramPoller::class)->runOnce();
         $this->assertDatabaseHas('telegram_updates', ['result' => 'denied']);
-        $this->assertStringNotContainsString($input, DB::table('telegram_replies')->value('text'));
+        $this->assertStringNotContainsString($input, json_encode(DB::table('telegram_updates')->get()));
+        $this->assertDatabaseCount('telegram_replies', 0);
         $this->assertDatabaseCount('access_grants', 0);
     }
 
@@ -296,7 +298,8 @@ class TelegramTest extends TestCase
         app(TelegramPoller::class)->runOnce();
         app(AccessService::class)->revokeGrant((int) DB::table('access_grants')->value('id'));
         app(ReplyWorker::class)->runOnce();
-        Http::assertSent(fn ($request) => str_ends_with($request->url(), '/sendMessage') && str_starts_with($request['text'], 'Access inactive.'));
+        Http::assertNotSent(fn ($request) => str_ends_with($request->url(), '/sendMessage'));
+        $this->assertDatabaseHas('telegram_replies', ['update_id' => 90, 'status' => 'cancelled', 'attempts' => 0]);
     }
 
     public function test_missing_credentials_and_malformed_update_payload_do_not_advance_offsets(): void

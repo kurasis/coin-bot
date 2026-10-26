@@ -92,7 +92,7 @@ Serialize watch-set changes at an atomic per-chain boundary `H`: the new members
 
 ## P09 - Telegram activation and delivery
 
-**Deliverables:** Integrate private-chat `/start <key>` with P03 using a single supervised long-polling worker, durable offsets, and idempotent update handling. Unknown users receive a neutral activation prompt. Add minimal account/delivery controls; user commands cannot perform operator administration.
+**Deliverables:** Integrate private-chat `/start <key>` with P03 using a single supervised long-polling worker, durable offsets, and idempotent update handling. Unknown/inactive users receive no replies; a valid key enrolls an invited user. An optional numeric user-ID allowlist gates enrollment, replies, and transfer delivery, including queued work. Add minimal account/delivery controls; user commands cannot perform operator administration.
 
 Implement the durable outbox worker with leases, per-chat/global rate limits, `retry_after`, backoff, visible failed deliveries, and controlled replay. Check user grants, subscription state, and destination permissions immediately before sending. Format exact amounts and include network, wallet label, direction, finality, explorer link, and stable event ID. Private chats are the initial delivery target; group/channel delivery is optional and requires separate permission tests before enabling it.
 

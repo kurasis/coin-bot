@@ -43,7 +43,7 @@ The initial access mechanism is an individual, single-use activation key:
 
 Renewing a key while access is active preserves `/stop` and destination restrictions. Activating fresh access after expiry/revocation enables private delivery from the new recorded monitoring boundary.
 
-Unknown users can see only a neutral activation prompt. Rate-limit invalid attempts without exposing whether a key belongs to another user. Operator privileges are configured separately from ordinary access grants; a user key never grants global administration. Keep operator actions auditable without recording raw secrets.
+Unknown users and users with expired/revoked access receive no replies, including activation hints or invalid-key errors. A valid individual key can enroll its recipient; an optional numeric Telegram user-ID allowlist additionally restricts enrollment, command replies, and transfer delivery. A malformed nonempty list fails closed. Revalidate the current grant and reply user/chat binding before sending; cancel legacy anonymous replies and stale unauthorized work. Rate-limit invalid attempts without exposing whether a key belongs to another user. Operator privileges are configured separately from ordinary access grants; a user key never grants global administration. Keep operator actions auditable without recording raw secrets.
 
 Enforce user ownership in application services and queries, including CLI operations, exports, historical results, and recipient routing. Test isolation using two users following different wallets and two users following the same wallet. A user's activation or backfill must not expose another user's records or change their notification policy. Private labels must not leak into shared destinations.
 
