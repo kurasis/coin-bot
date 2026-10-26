@@ -14,9 +14,11 @@ Development code for P01-P12 and its offline verification are complete. The deve
 
 Current scope is development only: production deployment and real recipient delivery are deferred. All integration settings live in `config/` and the credential-free `.env.example`; see [configuration](docs/configuration.md).
 
-For a later server installation, see the [native Debian 13 deployment guide](docs/deploy-debian13.md) and [Telegram-only website access](docs/telegram-only-website.md).
+For a later server installation, see the [native Debian 12/13 deployment guide](docs/deploy-debian.md) and [Telegram-only website access](docs/telegram-only-website.md).
 
-The complete release ZIP includes production Composer dependencies and Composer itself. On a fresh Debian 13 server, `sudo bash deploy/install-debian13.sh` prepares the application; `sudo coin-bot` provides enrollment, startup, and local administration. To build this package from committed source, use `bin/release` on the build machine.
+The complete release ZIP includes production Composer dependencies and Composer itself. On a fresh Debian 12 or Debian 13 server, `sudo bash deploy/install-debian.sh` prepares the application; `sudo coin-bot` provides enrollment, startup, and local administration. To build this package from committed source, use `bin/release` on the build machine.
+
+The build machine can verify the full package with `bin/verify-native-install ARCHIVE debian:bookworm-slim` or `debian:trixie-slim`. These disposable native-install checks require Docker only on the build/test machine and start no application workers.
 
 Repository documentation and code use English.
 

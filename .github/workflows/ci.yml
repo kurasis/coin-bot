@@ -21,3 +21,15 @@ jobs:
         run: |
           touch database/ci.sqlite
           docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/app" -w /app -e DB_DATABASE=/app/database/ci.sqlite coin-bot-php:8.5 php artisan migrate --force
+  native-install:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [bookworm, trixie]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build complete deployment package
+        run: bin/release "$RUNNER_TEMP/coin-bot-release"
+      - name: Verify native Debian installation
+        run: bin/verify-native-install "$RUNNER_TEMP/coin-bot-release/coin-bot-full-$(git rev-parse --short=7 HEAD).zip" "debian:${{ matrix.suite }}-slim"

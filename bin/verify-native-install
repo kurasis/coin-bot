@@ -1,0 +1,204 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ ${1:-} == --help || ${1:-} == -h ]]; then
+  cat <<'HELP'
+Usage: bin/verify-native-install FULL_ZIP [DEBIAN_IMAGE]
+
+Test the complete package in a disposable native Debian filesystem.
+DEBIAN_IMAGE is debian:bookworm-slim (default) or debian:trixie-slim.
+Requires Docker and outbound package access on the test machine only.
+
+Actual native PHP packages, application initialization, permissions, and startup
+guards are checked. Only systemctl daemon-reload is simulated; no application
+workers or web services start. Host application settings are not forwarded.
+HELP
+  exit 0
+fi
+if (( $# < 1 || $# > 2 )); then
+  echo 'Usage: bin/verify-native-install FULL_ZIP [DEBIAN_IMAGE]' >&2
+  exit 64
+fi
+archive="$(realpath -- "$1")"
+[[ -f "$archive" ]] || { echo 'A complete release ZIP is required.' >&2; exit 1; }
+image="${2:-debian:bookworm-slim}"
+case "$image" in
+  debian:bookworm-slim|debian:trixie-slim) ;;
+  *) echo 'Choose debian:bookworm-slim or debian:trixie-slim.' >&2; exit 64 ;;
+esac
+export DOCKER_CONFIG="${DOCKER_CONFIG:-/tmp/coin-bot-docker}"
+trust_args=()
+trust_file="${SSL_CERT_FILE:-/etc/ssl/certs/ca-certificates.crt}"
+if [[ -f "$trust_file" ]]; then
+  trust_args=(--volume "$trust_file:/run/host-ca.pem:ro")
+fi
+
+docker run --rm --init --interactive --network host \
+  --env HTTP_PROXY --env HTTPS_PROXY --env NO_PROXY --env http_proxy --env https_proxy --env no_proxy \
+  "${trust_args[@]}" --volume "$archive:/run/coin-bot-full.zip:ro" \
+  "$image" bash -s <<'SMOKE'
+set -euo pipefail
+export http_proxy="${http_proxy:-${HTTP_PROXY:-}}"
+export https_proxy="${https_proxy:-${HTTPS_PROXY:-}}"
+export no_proxy="${no_proxy:-${NO_PROXY:-}}"
+
+cleanup() {
+  local result=$?
+  if [[ -f /tmp/coin-bot-original-os-release ]]; then
+    cat /tmp/coin-bot-original-os-release > /etc/os-release
+  fi
+  if [[ $result != 0 && -f /tmp/coin-bot-installation.log ]]; then
+    tail -60 /tmp/coin-bot-installation.log >&2
+  elif [[ $result != 0 && -f /tmp/coin-bot-bootstrap.log ]]; then
+    tail -60 /tmp/coin-bot-bootstrap.log >&2
+  fi
+  exit "$result"
+}
+trap cleanup EXIT
+
+# Preserve TLS verification even where the test network uses a managed CA.
+if [[ -f /run/host-ca.pem ]]; then
+  install -d -m 0755 /etc/ssl/certs
+  install -m 0644 /run/host-ca.pem /etc/ssl/certs/ca-certificates.crt
+  find /etc/apt/sources.list.d -type f -exec sed -i 's|http://deb.debian.org|https://deb.debian.org|g' {} +
+fi
+apt-get update >/tmp/coin-bot-bootstrap.log 2>&1
+DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl unzip passwd util-linux >>/tmp/coin-bot-bootstrap.log 2>&1
+if [[ -f /run/host-ca.pem ]]; then
+  install -m 0644 /run/host-ca.pem /etc/ssl/certs/ca-certificates.crt
+fi
+mkdir -p /tmp/package /usr/local/bin /usr/local/sbin /etc/systemd/system
+unzip -q /run/coin-bot-full.zip -d /tmp/package
+cd /tmp/package/coin-bot
+test -f deploy/install-debian.sh
+
+# A container is not a booted systemd host. Only this reload is permitted.
+cat > /usr/local/bin/systemctl <<'CONTROL'
+#!/bin/sh
+printf '%s\n' "$*" >> /tmp/coin-bot-systemctl-calls
+[ "$#" -eq 1 ] && [ "$1" = daemon-reload ]
+CONTROL
+chmod 0755 /usr/local/bin/systemctl
+
+# Legacy instructions must reach the same generic installer without mutation.
+bash deploy/install-debian13.sh --help >/tmp/coin-bot-legacy-help
+grep -Fq 'Usage: sudo bash deploy/install-debian.sh' /tmp/coin-bot-legacy-help
+grep -Fq 'Debian 12 (Bookworm) or Debian 13 (Trixie)' /tmp/coin-bot-legacy-help
+
+# Distro guards must reject unsupported/mismatched metadata before APT or users.
+cat /etc/os-release >/tmp/coin-bot-original-os-release
+original_os_hash="$(sha256sum /etc/os-release | cut -d ' ' -f 1)"
+original_os_link="$(readlink /etc/os-release || true)"
+source /etc/os-release
+original_version="$VERSION_ID"
+mkdir -p /tmp/coin-bot-guard-bin
+cat > /tmp/coin-bot-guard-bin/apt-get <<'APT_GUARD'
+#!/bin/sh
+printf 'Unexpected APT invocation.\n' >/tmp/coin-bot-unexpected-apt
+exit 99
+APT_GUARD
+chmod 0755 /tmp/coin-bot-guard-bin/apt-get
+for fixture in unsupported mismatched; do
+  if [[ "$fixture" == unsupported ]]; then
+    printf 'ID=debian\nVERSION_ID="11"\nVERSION_CODENAME=bullseye\n' > /etc/os-release
+    expected_error='Debian 12 (Bookworm) or Debian 13 (Trixie) is required.'
+  else
+    printf 'ID=debian\nVERSION_ID="12"\nVERSION_CODENAME=trixie\n' > /etc/os-release
+    expected_error='version and codename do not match'
+  fi
+  if PATH="/tmp/coin-bot-guard-bin:$PATH" bash deploy/install-debian.sh > /tmp/coin-bot-distro-refusal.log 2>&1; then
+    echo 'Invalid distribution metadata was unexpectedly accepted.' >&2
+    exit 1
+  fi
+  grep -Fq "$expected_error" /tmp/coin-bot-distro-refusal.log
+  test ! -e /tmp/coin-bot-unexpected-apt
+  test ! -e /home/www/coinbot
+  if getent passwd coin-bot >/dev/null; then exit 1; fi
+  cat /tmp/coin-bot-original-os-release > /etc/os-release
+  test "$original_os_hash" = "$(sha256sum /etc/os-release | cut -d ' ' -f 1)"
+  test "$original_os_link" = "$(readlink /etc/os-release || true)"
+done
+
+# Refuse an inaccessible existing parent before changing accounts or its mode.
+mkdir -p /home/www
+chmod 0700 /home/www
+printf 'Existing parent fixture.\n' > /home/www/preserve-fixture
+if bash deploy/install-debian.sh >/tmp/coin-bot-parent-refusal.log 2>&1; then
+  echo 'A private existing parent was unexpectedly accepted.' >&2
+  exit 1
+fi
+grep -q 'directory traversal' /tmp/coin-bot-parent-refusal.log
+test "$(stat -c '%a' /home/www)" = 700
+test -f /home/www/preserve-fixture
+test ! -e /home/www/coinbot
+if getent passwd coin-bot >/dev/null; then exit 1; fi
+chmod 0755 /home/www
+parent_state="$(stat -c '%U:%G:%a' /home/www)"
+parent_hash="$(sha256sum /home/www/preserve-fixture | cut -d ' ' -f 1)"
+
+# Unlisted source configuration and host settings must not enter the install.
+printf 'UNLISTED_SOURCE_FIXTURE=yes\n' > .env
+printf 'External database sentinel.\n' > /tmp/coin-bot-foreign.sqlite
+external_hash="$(sha256sum /tmp/coin-bot-foreign.sqlite | cut -d ' ' -f 1)"
+DB_DATABASE=/tmp/coin-bot-foreign.sqlite APP_KEY=fixture_injected_key \
+  bash deploy/install-debian.sh >/tmp/coin-bot-installation.log 2>&1
+
+test "$original_os_hash" = "$(sha256sum /etc/os-release | cut -d ' ' -f 1)"
+test "$original_os_link" = "$(readlink /etc/os-release || true)"
+source /etc/os-release
+test "$VERSION_ID" = "$original_version"
+case "$VERSION_ID" in
+  12) expected_suite=bookworm ;;
+  13) expected_suite=trixie ;;
+  *) echo 'Unexpected test distribution.' >&2; exit 1 ;;
+esac
+grep -q "https://packages.sury.org/php/ $expected_suite main" /etc/apt/sources.list.d/coin-bot-php.list
+php_package_version="$(dpkg-query -W -f='${Version}' php8.5-cli)"
+case "$php_package_version" in
+  *"debian${original_version}"*) ;;
+  *) echo 'PHP package comes from the wrong Debian distribution.' >&2; exit 1 ;;
+esac
+test "$external_hash" = "$(sha256sum /tmp/coin-bot-foreign.sqlite | cut -d ' ' -f 1)"
+test "$parent_state" = "$(stat -c '%U:%G:%a' /home/www)"
+test "$parent_hash" = "$(sha256sum /home/www/preserve-fixture | cut -d ' ' -f 1)"
+test "$(stat -c '%U:%G:%a' /home/www/coinbot/.env)" = coin-bot:coin-bot:600
+test "$(stat -c '%U:%G:%a' /var/lib/coin-bot)" = coin-bot:coin-bot:700
+test "$(stat -c '%U:%G' /home/www/coinbot/vendor/autoload.php)" = root:root
+if grep -q 'fixture_injected\|UNLISTED_SOURCE_FIXTURE' /home/www/coinbot/.env; then exit 1; fi
+
+runuser -u coin-bot -- env -i PATH=/usr/bin:/bin HOME=/var/lib/coin-bot /usr/bin/php8.5 -r '
+chdir("/home/www/coinbot");
+require "vendor/autoload.php";
+$app = require "bootstrap/app.php";
+$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+if (PHP_MAJOR_VERSION !== 8 || PHP_MINOR_VERSION !== 5
+    || !str_starts_with(config("app.key"), "base64:")
+    || config("database.connections.sqlite.database") !== "/var/lib/coin-bot/database.sqlite") {
+    throw new RuntimeException("Native runtime or configuration mismatch.");
+}
+$database = new SQLite3(config("database.connections.sqlite.database"));
+if ($database->querySingle("PRAGMA integrity_check") !== "ok"
+    || $database->querySingle("SELECT COUNT(*) FROM migrations") < 7) {
+    throw new RuntimeException("Native database initialization failed.");
+}
+echo "Native PHP ", PHP_VERSION, ": application boot, migrations, SQLite integrity passed.\n";
+'
+
+config_hash="$(sha256sum /home/www/coinbot/.env | cut -d ' ' -f 1)"
+if bash deploy/install-debian.sh >/tmp/coin-bot-reinstall.log 2>&1; then
+  echo 'Existing installation was unexpectedly overwritten.' >&2
+  exit 1
+fi
+test "$config_hash" = "$(sha256sum /home/www/coinbot/.env | cut -d ' ' -f 1)"
+for action in enroll start; do
+  if /usr/local/sbin/coin-bot "$action" >/tmp/coin-bot-startup.log 2>&1; then
+    echo 'Startup without a protected backup mount was unexpectedly accepted.' >&2
+    exit 1
+  fi
+  grep -q 'Mount the protected' /tmp/coin-bot-startup.log
+done
+/usr/local/sbin/coin-bot list --raw >/tmp/coin-bot-commands.list
+grep -q 'access:issue' /tmp/coin-bot-commands.list
+test "$(cat /tmp/coin-bot-systemctl-calls)" = daemon-reload
+printf 'Debian %s (%s) native installation smoke passed; systemd reload simulated; no workers started.\n' "$VERSION_ID" "$expected_suite"
+SMOKE

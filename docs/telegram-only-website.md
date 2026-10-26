@@ -11,7 +11,7 @@ Verify the ranges against the [official Telegram webhook documentation](https://
 
 ## Install on the native dedicated server
 
-First complete the [Debian 13 guide](deploy-debian13.md). Point the site's DNS directly at the server, without a CDN or HTTP reverse proxy. Provision a valid certificate for that hostname using your certificate authority's **DNS-01** flow; install its full chain and private key at `/etc/ssl/coin-bot/fullchain.pem` and `/etc/ssl/coin-bot/privkey.pem`. Keep the private key root-owned with mode `0600`, configure automatic renewal, and reload Nginx after renewal. Public HTTP/ACME exceptions are deliberately absent.
+First complete the [Debian 12/13 guide](deploy-debian.md). Point the site's DNS directly at the server, without a CDN or HTTP reverse proxy. Provision a valid certificate for that hostname using your certificate authority's **DNS-01** flow; install its full chain and private key at `/etc/ssl/coin-bot/fullchain.pem` and `/etc/ssl/coin-bot/privkey.pem`. Keep the private key root-owned with mode `0600`, configure automatic renewal, and reload Nginx after renewal. Public HTTP/ACME exceptions are deliberately absent.
 
 On a fresh dedicated server, restrict network ingress **before** installing a web server. Replace `22` with the actual SSH port, preserve all required administrator access, and keep `IPV6=yes` in `/etc/default/ufw`. Existing hosts require review of their firewall rules: broad existing web-port allowances must be removed; adding narrow allowances does not override them.
 
