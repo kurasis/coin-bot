@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Blockchain\ChainClientFactory;
-use App\Monitoring\BlockScanner;
 use App\Operations\Heartbeat;
+use App\Reconciliation\ResilientScanner;
 use Illuminate\Console\Command;
 use Throwable;
 
@@ -16,7 +16,7 @@ class ChainScan extends Command
 
     protected $description = 'Scan finalized USDT ranges from an explicitly initialized durable cursor';
 
-    public function handle(ChainClientFactory $factory, BlockScanner $scanner): int
+    public function handle(ChainClientFactory $factory, ResilientScanner $scanner): int
     {
         $chain = (string) $this->argument('chain');
         $provider = (string) $this->option('provider');
@@ -33,10 +33,13 @@ class ChainScan extends Command
 
             return self::INVALID;
         }
-        $client = $factory->make($chain, $provider);
+        $primary = $factory->make($chain, 'primary');
+        $secondary = config('blockchain.chains.'.$chain.'.providers.secondary.rpc_url') ? $factory->make($chain, 'secondary') : null;
         do {
             try {
-                $result = $scanner->scan($client, $range);
+                $result = $provider === 'secondary' && $secondary !== null
+                    ? $scanner->scanWithSecondary($primary, $secondary, $range)
+                    : $scanner->scan($primary, $secondary, $range);
                 if (class_exists(Heartbeat::class)) {
                     app(Heartbeat::class)->record('scan-'.$chain);
                 }

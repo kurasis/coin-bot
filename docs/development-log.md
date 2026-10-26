@@ -55,3 +55,10 @@ P04 follow-up: added read-only `chain:probe` with mandatory address filters, bou
 - Lease-expiry and redirect regressions prevent avoidable duplicate sends and credential forwarding. Active key renewal preserves `/stop`, destination restrictions, and notification boundaries. Actual inactive reenrollment enables private delivery from the new recorded boundary.
 - Added an operator-only user-identity lookup for safely assigning wallets after enrollment. Activation parameters are marked sensitive in stack traces; local environment examples contain no credential values.
 - Actual bot credentials and an explicitly authorized staging recipient remain required for live delivery acceptance.
+
+## P10 - Implemented and offline verified; live acceptance deferred
+
+- Added independent range/watermark reconciliation, canonical boundary and two-provider receipt witnesses, atomic omission repair, rolling rechecks, persistent circuit breakers, and retryable-error failover against the original primary cursor.
+- Reconciliation/blockchain suites: 47 tests / 165 assertions passed after review fixes. TRON native fallback remains available through the cache wrapper; unknown or insufficient account retention never certifies coverage. Upstream two-day Retry-After survives HTTP parsing and circuit persistence.
+- A conflict now defers pending notifications only for the affected chain, preserving healthy-chain delivery. Telegram suite after these cross-component regressions: 25 tests / 115 assertions passed.
+- Actual independent account retention/capacity checks are deferred because the user selected development-only scope.

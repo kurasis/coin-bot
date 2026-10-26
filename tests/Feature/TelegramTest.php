@@ -3,8 +3,13 @@
 namespace Tests\Feature;
 
 use App\Access\AccessService;
+use App\Blockchain\AddressCodec;
+use App\Blockchain\Contracts\ChainClient;
+use App\Blockchain\TronRpcClient;
 use App\Monitoring\OutboxRouter;
+use App\Monitoring\ScanException;
 use App\Operations\MaintenanceGuard;
+use App\Reconciliation\Reconciler;
 use App\Telegram\DispatchRateGate;
 use App\Telegram\OutboxWorker;
 use App\Telegram\QueueLeases;
@@ -356,6 +361,132 @@ class TelegramTest extends TestCase
         $this->assertDatabaseHas('user_chat_destinations', ['user_id' => $fixture['user'], 'enabled' => 0]);
         $this->assertNotNull(DB::table('user_chat_destinations')->where('user_id', $fixture['user'])->value('revoked_at'));
         $this->assertNotNull(DB::table('chat_destinations')->where('id', $fixture['destination'])->value('suspended_at'));
+    }
+
+    public function test_paused_chain_backlog_does_not_send_or_starve_another_chain_and_survives_unpause(): void
+    {
+        $ethereum = $this->queued();
+        $bob = $this->user('2002', 'Bob TRON');
+        $tronAddress = AddressCodec::normalize('tron', '0x'.str_repeat('1', 40));
+        $wallet = DB::table('wallets')->insertGetId(['chain' => 'tron', 'address' => $tronAddress]);
+        DB::table('user_wallets')->where('user_id', $bob['user'])->update(['wallet_id' => $wallet]);
+        $event = (array) DB::table('transfers')->find($ethereum->transfer_id);
+        unset($event['id']);
+        for ($position = 1; $position <= 5; $position++) {
+            $copy = DB::table('transfers')->insertGetId(array_replace($event, ['receipt_log_position' => $position]));
+            app(OutboxRouter::class)->enqueue($copy);
+        }
+        $tronTransfer = DB::table('transfers')->insertGetId(array_replace($event, [
+            'chain' => 'tron', 'contract_address' => AddressCodec::normalize('tron', TronRpcClient::USDT_CONTRACT),
+            'from_address' => AddressCodec::normalize('tron', '0x'.str_repeat('2', 40)),
+            'to_address' => $tronAddress, 'finality' => 'solidified',
+        ]));
+        app(OutboxRouter::class)->enqueue($tronTransfer);
+        DB::table('scan_cursors')->insert(['chain' => 'ethereum', 'role' => 'primary', 'provider' => 'primary', 'paused_at' => now()]);
+        $this->fakeSendSuccess();
+        app(OutboxWorker::class)->runOnce();
+        Http::assertSentCount(1);
+        Http::assertSent(fn ($request) => $request['chat_id'] === '2002' && str_contains($request['text'], 'Network: TRON'));
+        $this->assertDatabaseHas('notification_outbox', ['id' => $ethereum->id, 'status' => 'retry', 'attempts' => 0]);
+        $this->assertSame(6, DB::table('notification_outbox')->where('status', 'retry')->count());
+        $this->assertSame(1, DB::table('notification_outbox')->where('status', 'sent')->count());
+        $this->assertDatabaseCount('outbox_authorizations', 7);
+        // This represents operator unpause only after the conflicting evidence has been validated.
+        DB::table('scan_cursors')->where('chain', 'ethereum')->update(['paused_at' => null, 'pause_reason' => null]);
+        $this->travel(6)->seconds();
+        app(OutboxWorker::class)->runOnce();
+        $this->assertDatabaseHas('notification_outbox', ['id' => $ethereum->id, 'status' => 'sent', 'attempts' => 1]);
+        Http::assertSentCount(2);
+    }
+
+    public function test_chain_pause_after_claim_is_rechecked_before_http_without_cancelling_the_event(): void
+    {
+        $row = $this->queued();
+        DB::table('scan_cursors')->insert(['chain' => 'ethereum', 'role' => 'reconciliation', 'provider' => 'secondary']);
+        $realAccess = app(AccessService::class);
+        $checks = 0;
+        $this->partialMock(AccessService::class, function ($mock) use ($realAccess, &$checks): void {
+            $mock->shouldReceive('deliveryAuthorized')->twice()->andReturnUsing(function (int $id) use ($realAccess, &$checks): bool {
+                if (++$checks === 2) {
+                    DB::table('scan_cursors')->where('chain', 'ethereum')->update(['paused_at' => now()]);
+                }
+
+                return $realAccess->deliveryAuthorized($id);
+            });
+        });
+        app(OutboxWorker::class)->runOnce();
+        Http::assertNothingSent();
+        $this->assertDatabaseHas('notification_outbox', ['id' => $row->id, 'status' => 'retry', 'attempts' => 0]);
+        $this->assertDatabaseCount('outbox_authorizations', 1);
+    }
+
+    public function test_real_reconciliation_boundary_conflict_blocks_already_queued_final_notification(): void
+    {
+        if (! class_exists(Reconciler::class)) {
+            $this->markTestSkipped('P10 reconciliation integration is not installed yet.');
+        }
+        config([
+            'blockchain.chains.ethereum.providers.primary.history_start_block' => 0,
+            'blockchain.chains.ethereum.providers.secondary.history_start_block' => 0,
+        ]);
+        $row = $this->queued();
+        $set = DB::table('watch_sets')->insertGetId(['chain' => 'ethereum', 'version' => 1, 'cutover_block' => 9, 'activated_at' => now()]);
+        DB::table('watch_set_wallets')->insert(['watch_set_id' => $set, 'wallet_id' => DB::table('wallets')->value('id')]);
+        $cursor = DB::table('scan_cursors')->insertGetId([
+            'chain' => 'ethereum', 'role' => 'primary', 'provider' => 'primary', 'watch_set_id' => $set,
+            'last_block' => 10, 'last_block_hash' => '0x'.str_repeat('b', 64),
+        ]);
+        DB::table('scan_ranges')->insert([
+            'cursor_id' => $cursor, 'watch_set_id' => $set, 'from_block' => 10, 'to_block' => 10,
+            'to_block_hash' => '0x'.str_repeat('b', 64), 'status' => 'completed', 'completed_at' => now(),
+        ]);
+        $client = static fn (string $role, string $hash) => new class($role, $hash) implements ChainClient
+        {
+            public function __construct(private string $role, private string $hash) {}
+
+            public function chain(): string
+            {
+                return 'ethereum';
+            }
+
+            public function provider(): string
+            {
+                return $this->role;
+            }
+
+            public function verifyNetwork(): void {}
+
+            public function finalizedBlock(): array
+            {
+                return $this->block(10);
+            }
+
+            public function block(int $number): array
+            {
+                return ['number' => $number, 'hash' => $this->hash, 'timestamp' => 1793038000];
+            }
+
+            public function logs(int $from, int $to, array $normalizedWatchedAddresses, string $direction): array
+            {
+                throw new \LogicException('Boundary conflict must stop before logs.');
+            }
+
+            public function receipt(string $transactionHash): array
+            {
+                throw new \LogicException('Boundary conflict must stop before receipts.');
+            }
+        };
+        try {
+            app(Reconciler::class)->reconcile($client('primary', '0x'.str_repeat('b', 64)), $client('secondary', '0x'.str_repeat('f', 64)));
+            $this->fail('Expected the conflicting finalized boundary to pause coverage.');
+        } catch (ScanException) {
+            $this->assertNotNull(DB::table('scan_cursors')->find($cursor)->paused_at);
+            $this->assertDatabaseHas('reconciliation_checks', ['failure_code' => 'boundary_hash_mismatch']);
+        }
+        app(OutboxWorker::class)->runOnce();
+        Http::assertNothingSent();
+        $this->assertDatabaseHas('notification_outbox', ['id' => $row->id, 'status' => 'retry', 'attempts' => 0]);
+        $this->assertDatabaseCount('transfers', 1);
     }
 
     private function update(int $id, string $actor, string $text): array

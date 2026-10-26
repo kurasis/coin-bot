@@ -16,3 +16,7 @@ On 2026-10-26 the implemented Ethereum client verified mainnet identity, read a 
 The fixture suite also exercises 100-address OR filters, malformed responses, redirect rejection, bounded retry/rate-limit handling, and native receipt completeness. These are not a substitute for repeating checks on the configured accounts. Default timeouts are bounded and configurable; hosted-proxy TLS handshakes required more than five seconds in this development environment.
 
 Live tests must be read-only, use known expected events and empty ranges, and keep URLs/API headers out of reports. Record each account's maximum block span, topic count, result ceiling, historical depth, billed method weights, steady-state allowance, and 24-hour backlog recovery allowance before closing P04.
+
+## Explicit retention floor
+
+Each actual provider supports `<PREFIX>_HISTORY_START_BLOCK`. Blank/unset means uncertified; reconciliation waits without advancing or certifying an empty range. Configure only a minimum height actually verified on that account. A range below either provider's floor remains pending. Public development scanner probes do not certify an unknown production account.

@@ -1,12 +1,14 @@
 # Development plan
 
+Current user scope: development only. Live account/recipient checks and production launch are deferred until explicitly requested.
+
 Status: implementation in progress. See the stage table and [development evidence](development-log.md) for completed work and outstanding live gates. Existing research probes alone are not application acceptance tests.
 
 Scope: PHP 8.5, Laravel 13, SQLite; official USDT on Ethereum and TRON; approximately 100 distinct addresses shared across multiple isolated users; individual key-based activation; finalized incoming/outgoing transfer notifications. See [the architecture](architecture.md) for the governing decisions and delivery limitations.
 
 ## Execution and tracking
 
-Use stable stage IDs P01-P13 in implementation tasks, commits, and pull requests. Track each stage as `planned`, `in_progress`, `blocked`, or `done`, with evidence linked when it is complete. Stage numbering describes the recommended order; independent work may proceed when external prerequisites block live checks.
+Use stable stage IDs P01-P13 in implementation tasks, commits, and pull requests. Track each stage as `planned`, `in_progress`, `blocked`, `deferred`, or `done`, with evidence linked when it is complete. Stage numbering describes the recommended order; independent work may proceed when external prerequisites block live checks.
 
 A stage is done only when its deliverables and required acceptance checks pass. Record simulated, live, skipped, and blocked checks separately. Test each feature in its own stage; P12 combines them into release-level acceptance rather than postponing correctness tests until the end. Complete relevant checks and commit/push/merge automatically within the task's authorized scope, following repository instructions.
 
@@ -25,7 +27,7 @@ Missing production credentials do not block fixture-based implementation. They d
 | P07 | TRON USDT monitoring | Solidified TRON ingestion and native fallback | P05 | done |
 | P08 | User wallets and historical import | Scoped administration, watch-set cutovers, and backfill | P03, P06, P07 | done |
 | P09 | Telegram activation and delivery | Authorized enrollment and durable notifications | P03, P05, P08 | blocked |
-| P10 | Independent reconciliation and failover | Detect omissions and recover provider outages | P06, P07, P08, P09 | planned |
+| P10 | Independent reconciliation and failover | Detect omissions and recover provider outages | P06, P07, P08, P09 | deferred |
 | P11 | Deployment, monitoring, and backups | Supervised single-host service and recoverable state | P09, P10 | planned |
 | P12 | Release acceptance and recovery drills | Measured correctness, load, quota, and restore evidence | P10, P11 | planned |
 | P13 | Production launch | Verified authorized deployment and operational handover | P12 | planned |

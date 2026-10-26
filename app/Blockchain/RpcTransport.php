@@ -48,6 +48,24 @@ final class RpcTransport
         return $url;
     }
 
+    private function retryAfterSeconds(string $header): ?int
+    {
+        $header = trim($header);
+        if (ctype_digit($header)) {
+            $digits = ltrim($header, '0');
+            $digits = $digits === '' ? '0' : $digits;
+            $maximum = (string) PHP_INT_MAX;
+            if (strlen($digits) > strlen($maximum) || (strlen($digits) === strlen($maximum) && strcmp($digits, $maximum) > 0)) {
+                throw new RpcException('Retry-After exceeds the representable scheduler interval.');
+            }
+
+            return (int) $digits;
+        }
+        $date = strtotime($header);
+
+        return $date === false ? null : max(0, $date - time());
+    }
+
     private function post(#[\SensitiveParameter] string $url, array $payload): array
     {
         $caBundle = $this->settings['ca_bundle'] ?? (getenv('SSL_CERT_FILE') ?: null);
@@ -56,7 +74,7 @@ final class RpcTransport
         }
         $attempts = max(1, min(5, (int) ($this->settings['attempts'] ?? 3)));
         for ($attempt = 0; $attempt < $attempts; $attempt++) {
-            $retryAfter = null;
+            $retryAfterSeconds = null;
             try {
                 $response = Http::acceptJson()->asJson()
                     ->withOptions(['verify' => $caBundle ?? true, 'allow_redirects' => false])
@@ -68,12 +86,10 @@ final class RpcTransport
                 if (! $response->successful()) {
                     $status = $response->status();
                     $retryHeader = $response->header('Retry-After');
-                    if (is_string($retryHeader) && ctype_digit($retryHeader)) {
-                        $retryAfter = min((int) $retryHeader, 86400) * 1000;
-                    } elseif (is_string($retryHeader) && ($retryDate = strtotime($retryHeader)) !== false) {
-                        $retryAfter = min(86400, max(0, $retryDate - time())) * 1000;
+                    if (is_string($retryHeader)) {
+                        $retryAfterSeconds = $this->retryAfterSeconds($retryHeader);
                     }
-                    throw new RpcException('Blockchain HTTP request failed.', $status === 408 || $status === 429 || $status >= 500, $status, $retryAfter !== null ? intdiv($retryAfter, 1000) : null);
+                    throw new RpcException('Blockchain HTTP request failed.', $status === 408 || $status === 429 || $status >= 500, $status, $retryAfterSeconds);
                 }
                 $body = $response->json();
                 if (! is_array($body)) {
@@ -102,11 +118,11 @@ final class RpcTransport
                 throw $error;
             }
             $maximumDelay = max(0, min(5000, (int) ($this->settings['max_backoff_ms'] ?? 1000)));
-            if ($retryAfter !== null && $retryAfter > $maximumDelay) {
+            if ($retryAfterSeconds !== null && $retryAfterSeconds > intdiv($maximumDelay, 1000)) {
                 throw $error; // Let the supervised worker reschedule a long server-requested delay.
             }
             $base = max(0, (int) ($this->settings['backoff_ms'] ?? 125));
-            $delay = $retryAfter ?? min($maximumDelay, $base * (2 ** $attempt) + ($base > 0 ? random_int(0, $base) : 0));
+            $delay = $retryAfterSeconds !== null ? $retryAfterSeconds * 1000 : min($maximumDelay, $base * (2 ** $attempt) + ($base > 0 ? random_int(0, $base) : 0));
             if ($delay > 0) {
                 usleep($delay * 1000);
             }

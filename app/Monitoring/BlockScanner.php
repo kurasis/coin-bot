@@ -170,6 +170,13 @@ class BlockScanner
     private function collectVerified(ChainClient $client, int $watchSetId, int $from, int $to): array
     {
         $this->watchSet($client->chain(), $watchSetId);
+        $floor = config('blockchain.chains.'.$client->chain().'.providers.'.$client->provider().'.history_start_block');
+        if ($floor !== null) {
+            $minimum = filter_var($floor, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
+            if ($minimum === false || $from < $minimum) {
+                throw new ScanException('Requested range is outside the configured provider history boundary.');
+            }
+        }
         $watched = DB::table('watch_set_wallets as m')->join('wallets as w', 'w.id', 'm.wallet_id')
             ->where('m.watch_set_id', $watchSetId)->where('w.chain', $client->chain())->orderBy('w.id')->pluck('w.address')->all();
         $candidates = [];

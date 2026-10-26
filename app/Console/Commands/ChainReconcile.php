@@ -1,0 +1,52 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Console\Commands;
+
+use App\Blockchain\ChainClientFactory;
+use App\Operations\Heartbeat;
+use App\Reconciliation\Reconciler;
+use Illuminate\Console\Command;
+use Throwable;
+
+class ChainReconcile extends Command
+{
+    protected $signature = 'chain:reconcile {chain : ethereum or tron} {--once} {--interval=30}';
+
+    protected $description = 'Verify completed live ranges using independent finalized provider evidence';
+
+    public function handle(ChainClientFactory $factory, Reconciler $reconciler): int
+    {
+        $chain = (string) $this->argument('chain');
+        foreach (['primary', 'secondary'] as $role) {
+            if (! config('blockchain.chains.'.$chain.'.providers.'.$role.'.rpc_url')) {
+                $this->error('Both independent provider endpoints must be configured for reconciliation.');
+
+                return self::FAILURE;
+            }
+        }
+        $interval = filter_var($this->option('interval'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 3600]]);
+        if ($interval === false) {
+            return self::INVALID;
+        }
+        do {
+            try {
+                $result = $reconciler->reconcile($factory->make($chain), $factory->make($chain, 'secondary'));
+                if (class_exists(Heartbeat::class)) {
+                    app(Heartbeat::class)->record('reconcile-'.$chain);
+                }
+                $this->line($result->idle || $result->waitingForFinality || $result->waitingForHistory ? 'No finalized history-certified reconciliation range is currently ready.' : "Verified range {$result->rangeId}; recovered {$result->repairedEvents} events.");
+            } catch (Throwable) {
+                $this->error('Reconciliation could not complete; inspect sanitized provider and conflict status.');
+
+                return self::FAILURE;
+            }
+            if (! $this->option('once')) {
+                sleep($result->idle || $result->waitingForFinality || $result->waitingForHistory ? $interval : 1);
+            }
+        } while (! $this->option('once'));
+
+        return self::SUCCESS;
+    }
+}

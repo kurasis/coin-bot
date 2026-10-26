@@ -5,6 +5,7 @@ namespace App\Telegram;
 use App\Access\AccessService;
 use App\Monitoring\OutboxRouter;
 use App\Operations\MaintenanceGuard;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 use LogicException;
 
@@ -24,9 +25,16 @@ final class OutboxWorker
         if ($this->paused()) {
             return false;
         }
+        $deferred = $this->deferPausedChains();
         $row = $this->leases->claim('notification_outbox');
         if ($row === null) {
-            return false;
+            return $deferred > 0;
+        }
+        $transfer = DB::table('transfers')->find($row->transfer_id);
+        if ($this->chainPaused($transfer->chain)) {
+            $this->deferPausedRow($row);
+
+            return true;
         }
         $routes = $this->router->authorizedRoutes((int) $row->id);
         if ($routes->isEmpty() || ! $this->access->deliveryAuthorized((int) $row->id)) {
@@ -40,7 +48,6 @@ final class OutboxWorker
             return true;
         }
         $destination = DB::table('chat_destinations')->find($row->destination_id);
-        $transfer = DB::table('transfers')->find($row->transfer_id);
         $delay = $this->rateGate->reserve((string) $destination->chat_id);
         if ($delay > 0) {
             $this->leases->release('notification_outbox', $row, 'retry', delaySeconds: max(1, (int) ceil($delay / 1000)));
@@ -56,6 +63,11 @@ final class OutboxWorker
         }
         if ($routes->isEmpty() || ! $this->access->deliveryAuthorized((int) $row->id)) {
             $this->leases->release('notification_outbox', $row, 'cancelled', 'Delivery no longer authorized.');
+
+            return true;
+        }
+        if ($this->chainPaused($transfer->chain)) {
+            $this->deferPausedRow($row);
 
             return true;
         }
@@ -113,6 +125,39 @@ final class OutboxWorker
                 'created_at' => now(), 'updated_at' => now(),
             ]);
         });
+    }
+
+    private function chainPaused(string $chain): bool
+    {
+        return DB::table('scan_cursors')->where('chain', $chain)
+            ->whereIn('role', ['primary', 'reconciliation'])->whereNotNull('paused_at')->exists();
+    }
+
+    /** Defer all ready work for paused chains so an older backlog cannot starve healthy chains. */
+    private function deferPausedChains(): int
+    {
+        $pausedChains = DB::table('scan_cursors')->select('chain')
+            ->whereIn('role', ['primary', 'reconciliation'])->whereNotNull('paused_at');
+        $transfers = DB::table('transfers')->select('id')->whereIn('chain', $pausedChains);
+
+        return DB::table('notification_outbox')->whereIn('transfer_id', $transfers)
+            ->where(function (Builder $query): void {
+                $query->where(function (Builder $ready): void {
+                    $ready->whereIn('status', ['pending', 'retry'])
+                        ->where(fn (Builder $q) => $q->whereNull('available_at')->orWhere('available_at', '<=', now()));
+                })->orWhere(function (Builder $expired): void {
+                    $expired->where('status', 'processing')->where('lease_expires_at', '<=', now());
+                });
+            })->update([
+                'status' => 'retry', 'last_error' => 'Chain coverage is paused.',
+                'available_at' => now()->addSeconds(5), 'lease_token' => null,
+                'lease_expires_at' => null, 'updated_at' => now(),
+            ]);
+    }
+
+    private function deferPausedRow(object $row): void
+    {
+        $this->leases->release('notification_outbox', $row, 'retry', 'Chain coverage is paused.', 5);
     }
 
     private function attempt(int $outboxId, string $outcome, ?int $code = null): void
