@@ -58,8 +58,13 @@ trap cleanup EXIT
 
 # Preserve TLS verification even where the test network uses a managed CA.
 if [[ -f /run/host-ca.pem ]]; then
-  install -d -m 0755 /etc/ssl/certs
+  install -d -m 0755 /etc/ssl/certs /usr/local/share/coin-bot-test
+  install -m 0644 /run/host-ca.pem /usr/local/share/coin-bot-test/ca-certificates.crt
   install -m 0644 /run/host-ca.pem /etc/ssl/certs/ca-certificates.crt
+  printf 'Acquire::https::CaInfo "/usr/local/share/coin-bot-test/ca-certificates.crt";\n' > /etc/apt/apt.conf.d/99coin-bot-test-ca
+  chmod 0644 /etc/apt/apt.conf.d/99coin-bot-test-ca
+  export SSL_CERT_FILE=/usr/local/share/coin-bot-test/ca-certificates.crt
+  export CURL_CA_BUNDLE="$SSL_CERT_FILE"
   find /etc/apt/sources.list.d -type f -exec sed -i 's|http://deb.debian.org|https://deb.debian.org|g' {} +
 fi
 apt-get update >/tmp/coin-bot-bootstrap.log 2>&1
