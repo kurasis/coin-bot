@@ -30,3 +30,5 @@ All results below were obtained on PHP 8.5.12 / Laravel 13.38.0 on 2026-10-26. P
 - Blockchain feature suite: 21 tests / 47 assertions passed; Pint passed.
 - Live implemented-client probes succeeded against public Ethereum RPC and TronGrid: network identity, finality, filtered official-USDT logs, and full successful receipts.
 - Actual paid primary/secondary account credentials, retained history depth, quota, and recovery headroom are not configured or certified. Public endpoints are proof of implementation, not production SLA/plan evidence. See [provider capabilities](provider-capabilities.md).
+
+P04 follow-up: added read-only `chain:probe` with mandatory address filters, bounded numeric ranges, network/finality checks, receipt samples, and safe JSON output. Combined client/probe suites passed 26 tests / 62 assertions. It does not write wallets, transfers, or messages.
