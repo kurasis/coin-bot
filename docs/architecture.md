@@ -21,13 +21,31 @@ Keep webhooks optional. QuickNode Streams is a documented cross-chain accelerati
 
 ## Scope and assumptions
 
-- Approximately 100 watched chain/address pairs in total; also suitable for 100 on each chain, subject to actual activity and provider limits.
+- Approximately 100 distinct watched chain/address pairs in total across multiple users; also suitable for 100 on each chain, subject to actual activity and provider limits. Multiple users may independently subscribe to the same address.
 - Support incoming, outgoing, and transfers between watched wallets. A transfer between two watched wallets creates one event; recipient routing determines whether to send one combined notification or distinct notifications to different subscribers.
 - A self-transfer must not produce two messages to the same subscriber.
 - No custody, withdrawals, transaction signing, swaps, general-purpose blockchain index, or monitoring of native ETH/TRX.
-- Users receive notifications in explicitly authorized Telegram chats. Wallet administration happens through authenticated administrative commands initially.
-- A private-chat recipient must first start the bot; a group/channel needs the appropriate membership and send permissions. One-time enrollment may require inbound Telegram updates even though the ongoing product is notification-only.
+- Users receive notifications only after activating an individual access key. Wallet administration happens through operator-only commands scoped to a specific user initially; interactive wallet-management commands can follow.
+- Private chats are the default. Users activate a key by starting the bot in a private chat. Optional group/channel delivery requires separate explicit authorization, appropriate bot permissions, and a policy for shared labels; possession of a group ID is not authorization.
 - Adding a wallet starts at an explicitly recorded block by default; historical import is an explicit operation and does not silently send old activity.
+
+## Multiple users and key-based access
+
+Use Telegram's immutable numeric user ID as the external identity, not a mutable username. A user owns subscriptions, private wallet labels, amount/direction filters, and notification settings. A global address record can be shared for efficient scanning; it does not confer access to another user's labels, history, settings, or subscriptions.
+
+The initial access mechanism is an individual, single-use activation key:
+
+1. An operator issues a cryptographically random key with at least 256 bits of entropy through an operator-only Artisan command. Show the raw key once for secure distribution; store only its hash and metadata. Do not include keys in logs, fixtures, analytics, or committed files.
+2. The user submits the key using `/start <key>` in a private bot chat, directly or through a Telegram start link. A compact base64url token fits Telegram's start-parameter limit. Do not log message bodies or credential-bearing links.
+3. Validate key expiry and revocation, then consume it and bind an access grant to the Telegram user ID atomically. Default activation-key lifetime is 24 hours, configurable; the resulting grant has an independently configurable expiry and may instead remain valid until revoked.
+4. Concurrent redemption by different users must yield exactly one successful binding. Redelivery of the same Telegram update is idempotent; it must not issue another grant. An already consumed key is not a reusable shared password.
+5. Operators can revoke an unused key or an activated grant. Check grant validity during wallet administration, subscription changes, outbox creation, and immediately before sending. Revocation removes that grant's pending-delivery authorizations; cancel a delivery only if no other valid authorizer remains. Revocation cannot retract a Telegram request already in flight.
+
+Unknown users can see only a neutral activation prompt. Rate-limit invalid attempts without exposing whether a key belongs to another user. Operator privileges are configured separately from ordinary access grants; a user key never grants global administration. Keep operator actions auditable without recording raw secrets.
+
+Enforce user ownership in application services and queries, including CLI operations, exports, historical results, and recipient routing. Test isolation using two users following different wallets and two users following the same wallet. A user's activation or backfill must not expose another user's records or change their notification policy. Private labels must not leak into shared destinations.
+
+Use one canonical destination per Telegram chat and explicit user-to-destination permissions. Each user-wallet subscription references an authorized destination. If multiple subscriptions route the same transfer to the same authorized chat, enqueue one message for that chat; use a destination-approved label or a neutral address instead of choosing another user's private label.
 
 ## Why this option
 
@@ -95,7 +113,7 @@ Wallet additions/removals create a new watch-set version with an atomic per-chai
 
 ### Telegram delivery
 
-Write outbox rows atomically with transfers. Uniqueness on `(transfer_id, subscriber_id, notification_kind)` prevents repeated scans from enqueueing the same notification. Resolve multiple wallet matches into one notification per destination for the same event.
+Write outbox rows atomically with transfers. Uniqueness on `(transfer_id, destination_id, notification_kind)` prevents repeated scans from enqueueing the same notification. Resolve multiple wallet matches into one notification per destination for the same event, and retain the authorizing subscription references. Delivery is allowed only while at least one authorizing subscription, destination permission, and user grant remains active.
 
 A worker leases pending rows in short database transactions, sends outside the transaction, and marks success only after a valid Telegram success response. Save `message_id`, attempt history, next retry time, and errors. Recover expired leases after a crash.
 
@@ -109,13 +127,19 @@ Notification content: direction, wallet label, exact USDT amount, chain, counter
 
 | Table | Purpose |
 | --- | --- |
-| `wallets` | Chain, normalized address, label, enabled state, start block |
-| `subscribers` / `wallet_subscriptions` | Authorized Telegram destinations and routing/filter rules |
+| `users` | Immutable Telegram user ID and account state |
+| `access_keys` / `access_grants` | Hashed single-use keys, redemption/expiry/revocation, and user access bindings |
+| `wallets` | Global deduplicated chain/address identities used for scanning |
+| `user_wallets` | User ownership, private label, enabled state, and monitoring start block |
+| `chat_destinations` / `user_chat_destinations` | Canonical Telegram chats and explicit per-user destination permissions |
+| `wallet_subscriptions` | User-wallet routing, direction/amount filters, and historical notification policy |
 | `watch_sets` | Versioned immutable scanner membership |
 | `scan_cursors` / `scan_ranges` | Primary and secondary coverage, boundary hashes, watch-set versions |
 | `transfers` | Unique normalized event, raw amount, contract, addresses, block/hash, finality evidence |
-| `notification_outbox` | Durable delivery state, unique event/destination/kind, lease and retry timing |
+| `notification_outbox` / `outbox_authorizations` | Unique event/destination/kind, authorizing subscriptions, durable delivery state, lease and retry timing |
 | `delivery_attempts` | Bounded operational audit without tokens or secret-bearing URLs |
+
+Enrollment also needs a durable Telegram update offset and update-id deduplication. Start with a single supervised long-polling worker so activation does not require a public inbound HTTP endpoint. Persist update processing before acknowledging the offset; recover safely from redelivery. Inbound commands are limited to activation and account/delivery controls initially.
 
 Recommended application boundaries: `EthereumRpcClient`, `TronRpcClient`, `TransferDecoder`, `BlockScanner`, `TransferRecorder`, `Reconciler`, and `TelegramSender`. Shared scanning logic must not erase chain-specific finality and address behavior.
 
@@ -132,6 +156,8 @@ Apply per-connection `foreign_keys=ON`, `busy_timeout`, and `synchronous=FULL`; 
 SQLite is not an active-active database. Never share a WAL database across hosts using NFS or start two independent writable copies. Use a passive recovery host or rebuildable host image and a documented single-writer fencing procedure before promotion. Supervisor/systemd restarts crashed workers; external monitoring must detect a completely dead host.
 
 Create consistent encrypted off-host backups using SQLite's online backup mechanism, not a raw copy of the main file while WAL is active. Start with a one-minute backup objective and backup on wallet/subscriber configuration changes; measure backup overhead. Preserve the Laravel application key and required configuration securely. Rehearse restore, `integrity_check`, cursor replay, and pending-delivery recovery.
+
+An older backup may resurrect an already consumed activation key or revoked grant. Restore in maintenance mode with enrollment and sending disabled. The default recovery policy invalidates all restored activation keys and grants, removes their pending-delivery authorizations, and requires fresh operator-issued activation before resuming recipient delivery. Preserve wallets and transfer history. Preserving access instead requires a separately durable, verified replay of all later redemption/revocation records; never assume an incomplete audit proves validity. Include user reactivation in measured delivery recovery time.
 
 Provisional service objectives: RTO 5-15 minutes for host failure and database RPO up to the verified backup interval. These are design targets pending drills. Public-chain history lets us reconstruct transfers after restoring older checkpoints, but does not reconstruct lost watch-list changes or prove whether a Telegram message was already sent. Do not promise zero data loss or zero duplicates.
 
@@ -152,15 +178,16 @@ QuickNode Streams bills processed block data; filtering for 100 addresses does n
 Required before production:
 
 1. Both real provider accounts per chain pass known historical and recent transfer queries, topic OR batching, empty-range queries, receipt decoding, correct network/finality, range splitting, and intended outage-history replay.
-2. Inbound/outbound, watched-to-watched, self-transfer, contract-initiated transfers, multiple identical events in one transaction, zero values, very large amounts, and fake-USDT contracts are handled correctly.
+2. Inbound/outbound, watched-to-watched, self-transfer, contract-initiated transfers, multiple identical events in one transaction, zero values, very large amounts, and fake-USDT contracts are handled correctly. Multiple users receive independently authorized notifications without leaking wallet labels, history, or settings.
 3. Kill workers before/after database commit and before/after Telegram acceptance. No event or durable pending delivery disappears; ambiguous-send duplicates remain a documented outcome.
 4. Simulate 429/403/5xx, HTTP-200 body errors, timeouts, malformed data, silent missing events, lagging secondary state, and primary outage. Verify recovery and independent reconciliation without advancing incomplete coverage.
 5. Add a wallet during scanning and backfill; verify watch-set coverage and historical notification policy. Exercise provisional reorg handling only if that feature is enabled.
 6. Accumulate at least a 24-hour simulated backlog and recover within a measured time and actual vendor quota. Final history depth and the maximum recoverable outage must be explicitly documented.
 7. Restore an off-host backup onto the passive host, fence the old writer, verify integrity, replay from restored coverage, and recover delivery leases. Measure RPO/RTO and document possible resent messages.
 8. Alert externally on scanner coverage lag, finality stalls, primary/secondary disagreement, oldest pending delivery, failed destinations, stale backups, disk exhaustion, SQLite contention, and worker heartbeat loss. Do not depend exclusively on this bot's own Telegram delivery to report its failure.
+9. Expired/revoked/invalid keys, concurrent redemption, duplicate Telegram updates, revoked access with pending deliveries, and attempts to administer another user's wallets are rejected or handled idempotently as appropriate. An authorized subscriber sharing a destination must not lose delivery solely because another subscriber's access was revoked. Restoring an older backup must not make consumed keys or revoked grants usable again.
 
-Recommended implementation order: schema and event fixtures; chain adapters and resumable scanners; transactional outbox and recipient enrollment; reconciliation and provider fallback; deployment/backup/monitoring; fault-injection and restore drills. A graphical administration panel and optional webhooks can follow.
+The [development plan](development-plan.md) defines implementation stages P01-P13, their dependencies, and acceptance criteria. A graphical administration panel, optional shared destinations, provisional alerts, and provider webhooks are follow-up features unless explicitly enabled within the initial release scope.
 
 ## Evidence and limits of this design work
 
