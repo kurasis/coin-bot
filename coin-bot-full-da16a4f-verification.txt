@@ -1,0 +1,12 @@
+Coin Bot full native deployment package
+Source: da16a4f2ac25e889e192aa853054955e39e625db
+Supported hosts: Debian 12 Bookworm and Debian 13 Trixie
+Application: /home/www/coinbot
+74 locked production dependencies and Composer included.
+ZIP CRC, SHA-256, every release manifest member, executable modes, and private-file exclusions verified.
+Final ZIP relocation, autoload, package discovery, platform requirements, and memory-SQLite migrations passed.
+Native PHP 8.5.12 installation checks passed on fresh official Bookworm and Trixie filesystems: matching distro package provenance, OS metadata preservation, unsupported/mismatched distro refusal before APT, SQLite integrity, private permissions, external environment isolation, parent preservation, reinstall/key preservation, and backup startup gates.
+Published production runtime/dependency bytes match the payload used in both native installation checks; generated Composer metadata was separately relocation-tested in the final ZIP.
+TLS verification retained, including explicit trusted CA bindings in the test harness.
+Only systemd reload was simulated. No application workers, web listeners, real provider probes or recipient messages were started.
+Production provider, off-host recovery and recipient acceptance remain deferred.
