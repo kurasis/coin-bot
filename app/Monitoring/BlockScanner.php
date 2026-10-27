@@ -156,6 +156,17 @@ class BlockScanner
         return $this->collectVerified($client, $watchSetId, $from, $to);
     }
 
+    /** Explicitly provisional Ethereum observations; never written to finalized coverage. */
+    public function collectProvisionalEthereum(ChainClient $client, int $watchSetId, int $from, int $to, int $confirmedHead): array
+    {
+        if ($client->chain() !== 'ethereum' || $from < 0 || $to < $from || $to > $confirmedHead) {
+            throw new ScanException('Provisional collection must remain within its observed Ethereum confirmation boundary.');
+        }
+
+        return array_map(static fn (array $event): array => array_replace($event, ['finality' => 'preliminary']),
+            $this->collectVerified($client, $watchSetId, $from, $to));
+    }
+
     public static function digest(array $events): string
     {
         $normalized = array_map(static fn (array $event): array => array_intersect_key($event, array_flip([

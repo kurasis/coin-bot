@@ -253,18 +253,15 @@ class ReconciliationTest extends TestCase
         $this->assertDatabaseHas('scan_cursors', ['role' => 'primary', 'last_block' => 11]);
     }
 
-    public function test_validation_and_permission_failure_do_not_silently_switch_provider(): void
+    public function test_permission_failure_uses_independently_validated_secondary_without_losing_coverage(): void
     {
         [$primary, $secondary, $cursor] = $this->pair();
         $primary->networkError = new RpcException('Wrong network or forbidden configuration.', false, 403);
-        $this->expectException(RpcException::class);
-        try {
-            (new ResilientScanner)->scan($primary, $secondary);
-        } finally {
-            $this->assertSame(0, $secondary->verifyCalls);
-            $this->assertSame(9, DB::table('scan_cursors')->find($cursor)->last_block);
-            $this->assertDatabaseCount('transfers', 0);
-        }
+        (new ResilientScanner)->scan($primary, $secondary);
+        $this->assertSame(1, $secondary->verifyCalls);
+        $this->assertSame(10, DB::table('scan_cursors')->find($cursor)->last_block);
+        $this->assertDatabaseCount('transfers', 1);
+        $this->assertDatabaseHas('provider_health', ['provider' => 'primary', 'last_http_status' => 403, 'failure_count' => 1]);
     }
 
     public function test_finalized_history_mismatch_never_uses_failover_to_hide_the_conflict(): void

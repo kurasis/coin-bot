@@ -42,6 +42,12 @@ class EthereumRpcClient implements ChainClient
         return $this->parseBlock($this->transport->rpc('eth_getBlockByNumber', ['finalized', false]));
     }
 
+    /** Latest canonical head; this is deliberately not a finality assertion. */
+    public function latestBlock(): array
+    {
+        return $this->parseBlock($this->transport->rpc('eth_getBlockByNumber', ['latest', false]));
+    }
+
     public function block(int $number): array
     {
         $block = $this->parseBlock($this->transport->rpc('eth_getBlockByNumber', [Hex::quantity($number), false]));

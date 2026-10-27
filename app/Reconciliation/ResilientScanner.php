@@ -31,10 +31,7 @@ final class ResilientScanner
 
             return $result;
         } catch (RpcException $error) {
-            if (! $error->retryable) {
-                throw $error; // Validation, wrong network, and configuration failures must remain visible.
-            }
-            $this->circuits->failed($primary, $error);
+            $this->recordProviderFailure($primary, $error);
             if ($secondary === null) {
                 throw $error;
             }
@@ -70,8 +67,19 @@ final class ResilientScanner
 
             return $result;
         } catch (RpcException $error) {
-            $this->circuits->failed($secondary, $error);
+            $this->recordProviderFailure($secondary, $error);
             throw $error;
         }
+    }
+
+    private function recordProviderFailure(ChainClient $client, RpcException $error): void
+    {
+        // An independent provider may continue checking after authentication,
+        // malformed-response, or wrong-network failures too. Its own network
+        // and canonical evidence are still validated by BlockScanner. Only the
+        // provider circuit uses a retryable envelope; scan errors stay intact.
+        $this->circuits->failed($client, $error->retryable ? $error : new RpcException(
+            'Blockchain provider is unavailable for monitoring.', true, $error->httpStatus, $error->retryAfterSeconds,
+        ));
     }
 }

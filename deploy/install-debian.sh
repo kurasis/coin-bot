@@ -198,7 +198,7 @@ $values = [
     "APP_ENV" => "production", "APP_DEBUG" => "false",
     "DB_DATABASE" => "/var/lib/coin-bot/database.sqlite",
     "OPERATIONS_BACKUP_DIRECTORY" => "/mnt/coin-bot-backups",
-    "OPERATIONS_REQUIRED_WORKERS" => "scan-ethereum,scan-tron,telegram-poll,telegram-deliver,backfill,backups,reconcile-ethereum,reconcile-tron",
+    "OPERATIONS_REQUIRED_WORKERS" => "scan-ethereum,scan-ethereum-early,scan-tron,telegram-poll,telegram-deliver,backfill,backups,reconcile-ethereum,reconcile-tron",
 ];
 foreach ($values as $key => $value) {
     $contents = preg_replace("/^".preg_quote($key, "/")."=.*$/m", $key."=".$value, $contents, count: $count);

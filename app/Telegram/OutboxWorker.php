@@ -30,7 +30,30 @@ final class OutboxWorker
         if ($row === null) {
             return $deferred > 0;
         }
-        $transfer = DB::table('transfers')->find($row->transfer_id);
+        $transfer = $this->router->transferForOutbox($row);
+        if ($transfer === null) {
+            $this->leases->release('notification_outbox', $row, 'cancelled', 'Notification evidence no longer exists.');
+
+            return true;
+        }
+        if ($this->orphaned($row)) {
+            DB::transaction(function () use ($row): void {
+                // An expired lease with a begun but unrecorded HTTP attempt is
+                // genuinely ambiguous; a merely leased never-sent row is not.
+                if ((int) $row->attempts > DB::table('delivery_attempts')->where('outbox_id', $row->id)->count()) {
+                    $this->attempt((int) $row->id, 'ambiguous', 0);
+                }
+                $this->leases->release('notification_outbox', $row, 'cancelled', 'Preliminary observation was invalidated.');
+                $this->router->enqueueEarlyCorrection((int) $row->id);
+            });
+
+            return true;
+        }
+        if ($this->earlyDeferred($row)) {
+            $this->leases->release('notification_outbox', $row, 'retry', 'Preliminary coverage is disabled or awaiting consistent evidence.', 5);
+
+            return true;
+        }
         if ($this->chainPaused($transfer->chain)) {
             $this->deferPausedRow($row);
 
@@ -71,10 +94,16 @@ final class OutboxWorker
 
             return true;
         }
+        if ($this->earlyDeferred($row)) {
+            $this->leases->release('notification_outbox', $row, 'retry', 'Preliminary coverage is disabled or awaiting consistent evidence.', 5);
+
+            return true;
+        }
         if (! $this->leases->beginAttempt('notification_outbox', $row)) {
             return true;
         }
         try {
+            $transfer->notification_kind = $row->notification_kind;
             $messageId = $this->client->sendMessage((string) $destination->chat_id, $this->formatter->format($transfer, $destination, $routes));
             DB::transaction(function () use ($row, $destination, $messageId): void {
                 $stillOwned = $this->leases->owned('notification_outbox', $row)->exists();
@@ -86,6 +115,7 @@ final class OutboxWorker
                 }
                 DB::table('chat_destinations')->where('id', $destination->id)->update(['last_sent_at' => now(), 'updated_at' => now()]);
                 $this->attempt((int) $row->id, $stillOwned ? 'sent' : 'sent_after_cancel');
+                $this->settleEarly((int) $row->id);
             });
         } catch (TelegramException $exception) {
             if ($exception->status === 429) {
@@ -100,13 +130,48 @@ final class OutboxWorker
                 }
                 $this->leases->release('notification_outbox', $row, $retry ? 'retry' : 'failed', $exception->getMessage(), $delay);
                 $this->attempt((int) $row->id, $exception->ambiguous ? 'ambiguous' : ($retry ? 'retry' : 'failed'), $exception->status);
+                $this->settleEarly((int) $row->id);
             });
         } catch (LogicException) {
             $this->leases->release('notification_outbox', $row, 'failed', 'Telegram configuration is missing or invalid.');
             $this->attempt((int) $row->id, 'failed', 0);
+            $this->settleEarly((int) $row->id);
         }
 
         return true;
+    }
+
+    private function orphaned(object $row): bool
+    {
+        return $row->notification_kind === 'transfer' && ($row->early_event_id ?? null) !== null
+            && DB::table('ethereum_early_events')->where('id', $row->early_event_id)->where('state', 'orphaned')->exists();
+    }
+
+    private function settleEarly(int $outboxId): void
+    {
+        $row = DB::table('notification_outbox')->find($outboxId);
+        if ($row !== null && $row->notification_kind === 'reorg') {
+            $this->router->settleFinalizedCorrection($outboxId);
+        }
+        if ($row !== null && $this->orphaned($row)) {
+            $this->router->orphanEarly((int) $row->early_event_id);
+        }
+    }
+
+    private function earlyDeferred(object $row): bool
+    {
+        $current = DB::table('notification_outbox')->find($row->id);
+        if ($current === null || $current->transfer_id !== null || ($current->early_event_id ?? null) === null || $current->notification_kind === 'reorg') {
+            return false;
+        }
+        $event = DB::table('ethereum_early_events')->find($current->early_event_id);
+        if ($event?->state === 'finalized' && $event->canonical_transfer_id !== null) {
+            return false;
+        }
+        $state = DB::table('ethereum_early_state')->find(1);
+
+        return ! config('ethereum.early_enabled', false) || $state === null || $state->paused_at !== null || (bool) $state->reorg_pending
+            || ($event !== null && (int) $event->block_number > (int) $state->last_block);
     }
 
     public function replay(int $outboxId): void

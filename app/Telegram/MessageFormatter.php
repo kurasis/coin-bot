@@ -22,7 +22,23 @@ final class MessageFormatter
         $explorer = $transfer->chain === 'ethereum'
             ? 'https://etherscan.io/tx/'.$hash
             : 'https://tronscan.org/#/transaction/'.preg_replace('/^0x/', '', $hash);
-        $id = substr(hash('sha256', $transfer->chain.':'.$hash.':'.$transfer->receipt_log_position), 0, 16);
+        $identity = $transfer->chain.':'.$hash.':'.$transfer->receipt_log_position;
+        if (($transfer->finality ?? null) === 'preliminary') {
+            $identity .= ':'.$transfer->block_hash;
+        }
+        $id = substr(hash('sha256', $identity), 0, 16);
+
+        if (($transfer->notification_kind ?? null) === 'reorg') {
+            return "Ethereum preliminary observation invalidated\n"
+                ."The earlier preliminary block observation is no longer canonical.\n"
+                ."The transaction may appear in another block.\n"
+                .'Observed block: '.$transfer->block_number.' ('.$transfer->block_hash.")\n"
+                .'Event: '.$id."\n".$explorer;
+        }
+        $status = $transfer->chain === 'tron' ? 'Solidified' : 'Finalized';
+        if (($transfer->finality ?? null) === 'preliminary') {
+            $status = 'Preliminary ('.(int) ($transfer->confirmations ?? 6).' subsequent blocks; not finalized)';
+        }
 
         return $direction.' USDT'."\n"
             .$label."\n"
@@ -31,7 +47,8 @@ final class MessageFormatter
             .'From: '.$transfer->from_address."\n"
             .'To: '.$transfer->to_address."\n"
             .'Block time: '.gmdate('Y-m-d H:i:s', (int) $transfer->block_timestamp).' UTC'."\n"
-            .'Status: '.($transfer->chain === 'ethereum' ? 'Finalized' : 'Solidified')."\n"
+            .(($transfer->finality ?? null) === 'preliminary' ? 'Observed block: '.$transfer->block_number.' ('.$transfer->block_hash.")\n" : '')
+            .'Status: '.$status."\n"
             .'Event: '.$id."\n".$explorer;
     }
 

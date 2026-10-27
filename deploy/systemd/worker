@@ -5,6 +5,7 @@ set -euo pipefail
 
 case "${1:-}" in
   ethereum) set -- chain:scan ethereum ;;
+  ethereum-early) set -- ethereum:early-scan ;;
   tron) set -- chain:scan tron ;;
   telegram-updates) set -- telegram:poll ;;
   telegram-delivery) set -- telegram:deliver ;;

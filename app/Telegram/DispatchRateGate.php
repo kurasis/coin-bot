@@ -2,14 +2,18 @@
 
 namespace App\Telegram;
 
+use App\Operations\MonitoringIncidentService;
 use Illuminate\Support\Facades\DB;
 
 final class DispatchRateGate
 {
     /** Reserve one global and private-chat slot atomically; return delay when unavailable. */
-    public function reserve(string $chatId): int
+    public function reserve(string $chatId, bool $monitoring = false): int
     {
-        return DB::transaction(function () use ($chatId): int {
+        return DB::transaction(function () use ($chatId, $monitoring): int {
+            if (! $monitoring && app(MonitoringIncidentService::class)->reservesChat($chatId)) {
+                return 1000;
+            }
             $now = now()->getTimestampMs();
             $names = ['global', 'chat:'.$chatId];
             foreach ($names as $name) {

@@ -29,6 +29,26 @@ class HealthReport
         }
         try {
             DB::select('select 1');
+            $earlyEnabled = (bool) config('ethereum.early_enabled', false);
+            $metrics['ethereum_notification_mode'] = $earlyEnabled ? 'preliminary' : 'finalized';
+            if (Schema::hasTable('ethereum_early_state')) {
+                $early = DB::table('ethereum_early_state')->find(1);
+                $metrics['ethereum_early_last_block'] = $early?->last_block;
+                $metrics['ethereum_early_reorg_pending'] = (bool) ($early?->reorg_pending ?? false);
+                $metrics['ethereum_early_paused'] = $early?->paused_at !== null;
+                if ($earlyEnabled && $metrics['ethereum_early_paused']) {
+                    $issues[] = 'ethereum_early_paused';
+                }
+                if ($earlyEnabled && $metrics['ethereum_early_reorg_pending']) {
+                    $issues[] = 'ethereum_early_reorg_pending';
+                }
+            }
+            if (Schema::hasTable('monitoring_incidents')) {
+                $metrics['monitoring_open_incidents'] = DB::table('monitoring_incidents')->where('state', 'outage')->count();
+                if ($metrics['monitoring_open_incidents'] > 0) {
+                    $issues[] = 'monitoring_unavailable';
+                }
+            }
             $metrics['paused_cursors'] = DB::table('scan_cursors')->whereNotNull('paused_at')->count();
             if ($metrics['paused_cursors'] > 0) {
                 $issues[] = 'paused_cursor';

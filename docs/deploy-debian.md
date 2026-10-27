@@ -26,6 +26,8 @@ sudo nano /home/www/coinbot/.env
 
 Fill in your Telegram bot token, allowed numeric Telegram user IDs, and the Ethereum/TRON provider URLs/API keys. Keep provider history floors blank until verified; never invent `0`. Settings are labelled in `.env`; see [configuration](configuration.md) for details. Preserve the generated `.env` and `APP_KEY` securely off-host.
 
+The new template enables preliminary Ethereum notifications after six subsequent blocks, targeting 1-2 minutes after inclusion under normal conditions. The finalized scanner continues separately. Sustained monitoring outages notify internal application User ID 1 after three unavailable checks spanning at least 30 seconds. After enrollment, confirm that user's mapping/access with `sudo coin-bot access:users`; this setting is not a Telegram ID. See [fast monitoring and alerts](fast-monitoring.md) for the preliminary/reorg policy, quota impact, and configuration.
+
 Use your one QuickNode endpoint for Ethereum. For TRON, use TronGrid plus a separate [Chainstack TRON Mainnet node](https://console.chainstack.com/). Copy **JSON-RPC API** into `TRON_SECONDARY_RPC_URL`; copy **HTTP API** into `TRON_SECONDARY_NATIVE_URL`, removing a final `/wallet` or `/wallet/` if present. Leave `TRON_SECONDARY_API_KEY` blank. See [the exact settings](configuration.md#one-quicknode-endpoint).
 
 Choose backup storage before enrollment. To start without mounting external storage, explicitly enable encrypted local backups:
@@ -82,5 +84,16 @@ Use `--chain=ethereum` for an Ethereum list. Up to 100 address lines are accepte
 `sudo coin-bot stop` stops workers. After editing `.env`, run `sudo coin-bot config:clear`, then `sudo coin-bot start`; do this with every worker stopped so all workers use the same access policy. `start` never resumes an operational recovery pause automatically.
 
 The installer is **first-install only** and refuses an existing installation. Do not overwrite a live installation with another ZIP: preserve configuration/data, stop all writers, and follow the [update/recovery discipline](operations.md#deployment-and-rollback-discipline). Source-checkout installation and its update commands remain in the [manual guide](deploy-debian-manual.md).
+
+For an existing installation based on `88483c3` / `b908565` that already has the managed backup policy, extract the new full ZIP separately and run this from its `coin-bot` directory:
+
+```bash
+sudo coin-bot stop
+sudo bash deploy/update-native-monitoring.sh
+sudo coin-bot start
+sudo coin-bot status
+```
+
+The updater verifies compatible code, takes an encrypted pre-upgrade backup, installs monitoring components/migrations, enables early Ethereum and internal-User-ID-1 alerts, adds the ninth worker, and reloads systemd without starting workers. Credentials, `APP_KEY`, wallets, SQLite, local/offhost backup mode, installed dependencies, and existing sites are preserved. If the managed backup policy is missing, apply `deploy/update-native-backups.sh` first as described above. The updater refuses unknown custom code or unsafe parent ownership without changing existing website parent permissions. Follow the [detailed monitoring update notes](fast-monitoring.md#existing-native-installation) if it refuses or fails; keep workers stopped until resolved.
 
 The bot needs no inbound website port. The optional [Telegram-only website configuration](telegram-only-website.md) is included and remains a separate setup; the installer opens no web listener or firewall port. Actual provider/recipient, backup, and production acceptance remain in the [release checklist](release-checklist.md).

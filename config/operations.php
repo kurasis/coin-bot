@@ -2,6 +2,10 @@
 
 return [
     'backup_mode' => env('OPERATIONS_BACKUP_MODE', 'offhost'),
+    'alert_user_id' => env('OPERATIONS_ALERT_USER_ID', 1),
+    'alert_failure_threshold' => env('OPERATIONS_ALERT_FAILURE_THRESHOLD', 3),
+    'alert_min_outage_seconds' => env('OPERATIONS_ALERT_MIN_OUTAGE_SECONDS', 30),
+    'alert_check_interval_seconds' => env('OPERATIONS_ALERT_CHECK_INTERVAL_SECONDS', 15),
     'state_directory' => env('OPERATIONS_STATE_DIRECTORY', storage_path('app/operations')),
     'backup_directory' => env('OPERATIONS_BACKUP_DIRECTORY', storage_path('app/backups')),
     'backup_retention' => (int) env('OPERATIONS_BACKUP_RETENTION', 1440),

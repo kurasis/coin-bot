@@ -1,0 +1,234 @@
+{
+  "format": 1,
+  "compatible_baselines": [
+    "88483c3d88e8106af5b7c8e5a61e86dae3ba7040",
+    "b908565e184466e46c10503c042a539827b4ebbc"
+  ],
+  "components": {
+    "app/Blockchain/EthereumRpcClient.php": {
+      "mode": 420,
+      "required": true,
+      "baseline_sha256": [
+        "e9d562db20e667fd2f21ba058379657a2e8d964ae4d9b9c97183adcf7ae0aacb"
+      ]
+    },
+    "app/Console/Commands/ChainScan.php": {
+      "mode": 420,
+      "required": true,
+      "baseline_sha256": [
+        "7477141e331e0d605961a4b32bb12e766ed443e29682937030a7cd677ea98f21"
+      ]
+    },
+    "app/Console/Commands/EthereumEarlyScan.php": {
+      "mode": 420,
+      "required": false,
+      "baseline_sha256": []
+    },
+    "app/Console/Commands/TelegramDeliver.php": {
+      "mode": 420,
+      "required": true,
+      "baseline_sha256": [
+        "a792f0e306433503a80f55fcd5daf4bd7374409deed1b9da30297da36bca40da"
+      ]
+    },
+    "app/Monitoring/BlockScanner.php": {
+      "mode": 420,
+      "required": true,
+      "baseline_sha256": [
+        "41dc738b2498aceebd4bbc25f6e4d093699470c6f0c2558cf89c25de4edf4b1d"
+      ]
+    },
+    "app/Monitoring/CheckAttempt.php": {
+      "mode": 420,
+      "required": false,
+      "baseline_sha256": []
+    },
+    "app/Monitoring/CheckedChainClient.php": {
+      "mode": 420,
+      "required": false,
+      "baseline_sha256": []
+    },
+    "app/Monitoring/EarlyWitnessException.php": {
+      "mode": 420,
+      "required": false,
+      "baseline_sha256": []
+    },
+    "app/Monitoring/EthereumEarlyScanner.php": {
+      "mode": 420,
+      "required": false,
+      "baseline_sha256": []
+    },
+    "app/Monitoring/MonitoringCycle.php": {
+      "mode": 420,
+      "required": false,
+      "baseline_sha256": []
+    },
+    "app/Monitoring/MonitoringReadiness.php": {
+      "mode": 420,
+      "required": false,
+      "baseline_sha256": []
+    },
+    "app/Monitoring/OutboxRouter.php": {
+      "mode": 420,
+      "required": true,
+      "baseline_sha256": [
+        "fe9d70f7426180d02b8a7621fb4ed60f157019d03c40085f1b695b39c4bf0758"
+      ]
+    },
+    "app/Operations/HealthReport.php": {
+      "mode": 420,
+      "required": true,
+      "baseline_sha256": [
+        "20a533a1cba1afec16f175a4069a913a5a5d272c1847b7a2efcb0b5b1f4a5117",
+        "d44b5b33c045a0fe6915abedc2bd00ec92e6d343b2af80f09b172ee5a3b69b04"
+      ]
+    },
+    "app/Operations/MonitoringIncidentService.php": {
+      "mode": 420,
+      "required": false,
+      "baseline_sha256": []
+    },
+    "app/Reconciliation/ResilientEarlyScanner.php": {
+      "mode": 420,
+      "required": false,
+      "baseline_sha256": []
+    },
+    "app/Reconciliation/ResilientScanner.php": {
+      "mode": 420,
+      "required": true,
+      "baseline_sha256": [
+        "2bdf6f01b6cf4b8c0524080f95adb166663114a71647b946368dc01de091c1d3"
+      ]
+    },
+    "app/Telegram/DispatchRateGate.php": {
+      "mode": 420,
+      "required": true,
+      "baseline_sha256": [
+        "d6a5b24fc0b707dfaefd93f78318d2951214f05c7ff336dd506689134b9c7a5b"
+      ]
+    },
+    "app/Telegram/MessageFormatter.php": {
+      "mode": 420,
+      "required": true,
+      "baseline_sha256": [
+        "e4fc94334d0ef76f6b7c9392f3f62ccd90b4ff7db38b3c2c4aa7c3f62f7593cf"
+      ]
+    },
+    "app/Telegram/MonitoringAlertWorker.php": {
+      "mode": 420,
+      "required": false,
+      "baseline_sha256": []
+    },
+    "app/Telegram/OutboxWorker.php": {
+      "mode": 420,
+      "required": true,
+      "baseline_sha256": [
+        "62868b247662608cf9f2146ee7a585b181d40c940f8d00ae8918e88ca267dd46"
+      ]
+    },
+    "app/Wallets/WalletService.php": {
+      "mode": 420,
+      "required": true,
+      "baseline_sha256": [
+        "9a924fc676c732d485bad7073bb0df6afa0310bc34a3ec90ef5a4ae916085e38"
+      ]
+    },
+    "config/ethereum.php": {
+      "mode": 420,
+      "required": false,
+      "baseline_sha256": []
+    },
+    "config/operations.php": {
+      "mode": 420,
+      "required": true,
+      "baseline_sha256": [
+        "7153341c4fb6fad562965caf2c25258fa77c7fb649a77e9d0628c71691eaa87b",
+        "7e8319ea556281659d4df308ebc44949d15cbd8983e199c9af0b4eacc3ca33e6"
+      ]
+    },
+    "database/migrations/2026_10_27_000100_add_ethereum_early_monitoring.php": {
+      "mode": 420,
+      "required": false,
+      "baseline_sha256": []
+    },
+    "database/migrations/2026_10_27_000200_create_monitoring_incidents.php": {
+      "mode": 420,
+      "required": false,
+      "baseline_sha256": []
+    },
+    "deploy/native-monitoring-config.php": {
+      "mode": 420,
+      "required": false,
+      "baseline_sha256": []
+    },
+    "deploy/systemd/coin-bot.target": {
+      "mode": 420,
+      "required": true,
+      "baseline_sha256": [
+        "64474d94ee0b4bf8644d4a137610a783def834f6a39c88231704c2edc21252de"
+      ]
+    },
+    "deploy/systemd/worker": {
+      "mode": 493,
+      "required": true,
+      "baseline_sha256": [
+        "2ae42053ecea24c68181140a6e51e256e206d4d2594d8e9b20c1d9772158f482",
+        "6de40bedfd42cd19580c2cc9fcc4725f6b87bd8a31401b104b64b54092a40d65"
+      ]
+    }
+  },
+  "guards": {
+    "app/Operations/NativeBackupPolicy.php": {
+      "baseline_sha256": [
+        "8c9a0556f380511d7f4323658e0efa3284a7e09900375a5ad9d5c5efc6de6f40"
+      ]
+    },
+    "artisan": {
+      "baseline_sha256": [
+        "f91a517c0c5d3a904c3f390933964a5e08ec1fc68146882730daac4aca4ffcec"
+      ]
+    },
+    "bootstrap/app.php": {
+      "baseline_sha256": [
+        "5affac529645646b3e4d599096e79c194aac63e8293690364b856d72c1e9ecbf"
+      ]
+    },
+    "composer.json": {
+      "baseline_sha256": [
+        "47c1a51081b11683687680408f66dc7f1dc654268fb585b95071c5d19545ee38"
+      ]
+    },
+    "composer.lock": {
+      "baseline_sha256": [
+        "30f27aba50e5b1e9e3e79e6aa2c2e3d33bf5db11f3734bfa26c837dc4d3a47f1"
+      ]
+    },
+    "deploy/coin-bot": {
+      "baseline_sha256": [
+        "5b1eb36049dc5add3ab65e2f34ef76fb20325061a4ebd0a36b352b01c2f67b2c",
+        "9ea4dad1693329011b94fb307f5e955f37d690898f2c08fd7cf44d70ee1dc237"
+      ]
+    },
+    "deploy/native-backup-config.php": {
+      "baseline_sha256": [
+        "7220a618e3ff12f6e5d424bcce9727cc46240316a9db2b5ed2d492a670829e8e"
+      ]
+    },
+    "deploy/native-preflight.php": {
+      "baseline_sha256": [
+        "7737f6f4eeb233c8a688c866e22deb9887baa365c84a5ee0917a47244637b5f2",
+        "947fb2857a4e917c9de1f67c1c4531b75b8921939bc5d623dcc5339c86ffcd87"
+      ]
+    },
+    "deploy/systemd/coin-bot-local-backups.conf": {
+      "baseline_sha256": [
+        "5c5aacec643d84c06152411240c46716f123d4b80bb143fb32bb9fa2dc5a95cd"
+      ]
+    },
+    "deploy/systemd/coin-bot@.service": {
+      "baseline_sha256": [
+        "1aad21583fc96734f8da5d165ded5f94708aee5a59d47ac32c993d177d8d5f99"
+      ]
+    }
+  }
+}

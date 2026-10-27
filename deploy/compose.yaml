@@ -16,7 +16,7 @@ x-runtime: &runtime
     LOG_CHANNEL: stderr
     OPERATIONS_BACKUP_DIRECTORY: /backups
     OPERATIONS_REQUIRE_BACKUP: "true"
-    OPERATIONS_REQUIRED_WORKERS: scan-ethereum,scan-tron,telegram-poll,telegram-deliver,backfill,backups,reconcile-ethereum,reconcile-tron
+    OPERATIONS_REQUIRED_WORKERS: scan-ethereum,scan-ethereum-early,scan-tron,telegram-poll,telegram-deliver,backfill,backups,reconcile-ethereum,reconcile-tron
   volumes:
     - ../:/app:ro
     - database:/app/var
@@ -58,6 +58,12 @@ services:
       migrate:
         condition: service_completed_successfully
     command: [php, artisan, chain:scan, ethereum]
+  ethereum-early:
+    <<: *runtime
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    command: [php, artisan, ethereum:early-scan]
   tron:
     <<: *runtime
     depends_on:

@@ -4,7 +4,7 @@ Research date: 2026-10-26.
 
 ## Decision
 
-Use a small Laravel 13 application on PHP 8.5 with two resumable block-range scanners, a SQLite transfer ledger, and a transactional Telegram outbox. Monitor only official USDT `Transfer` events on Ethereum mainnet and TRON mainnet. Default to incoming and outgoing transfers and notify only after chain finality.
+Use a small Laravel 13 application on PHP 8.5 with two resumable finalized block-range scanners, a SQLite transfer ledger, and a transactional Telegram outbox. Monitor only official USDT `Transfer` events on Ethereum mainnet and TRON mainnet. Support incoming and outgoing transfers. A separate optional Ethereum worker can send explicitly preliminary observations after six subsequent blocks, while finalized coverage remains independent. New environment templates select that early mode; unchanged older configurations keep it disabled.
 
 Use two independent RPC vendors per chain. Suggested provider arrangement:
 
@@ -17,7 +17,7 @@ These are provider candidates, not purchased or certified production accounts. V
 
 Both chains support filtered `eth_getLogs` queries. TRON native solidity APIs provide an additional receipt-level verification and recovery path. Do not rely on hosted TRON gateways accepting Ethereum finality tags: current java-tron documentation and a TronGrid probe support `finalized`, while QuickNode's current TRON documentation describes narrower support. Obtain the TRON solidified height through the native API and pass explicit numeric heights to log queries.
 
-Keep webhooks optional. QuickNode Streams is a documented cross-chain acceleration option if early delivery becomes necessary. Historical RPC replay remains the independent recovery mechanism.
+Keep webhooks optional. The implemented preliminary Ethereum path uses RPC without a webhook or another purchased endpoint. QuickNode Streams remains a documented alternative acceleration option. Historical RPC replay remains the independent recovery mechanism.
 
 ## Scope and assumptions
 
@@ -111,9 +111,16 @@ Historical visibility and notification eligibility have separate boundaries. `us
 ### Finality and latency
 
 - **TRON:** notify from solidified state, which normally trails the latest head by approximately one minute. Add the polling and delivery delay; target approximately one to two minutes under normal conditions.
-- **Ethereum:** notify from `finalized`, normally on the order of 15 minutes after inclusion. Polling cannot eliminate consensus finality latency. Finality can stall; do not substitute a wall-clock timeout for confirmation.
+- **Ethereum finalized path:** scan from `finalized`, normally on the order of 15 minutes after inclusion. Polling cannot eliminate consensus finality latency. Finality can stall; do not substitute a wall-clock timeout for confirmation.
+- **Ethereum preliminary path:** when enabled, wait for six subsequent blocks (normally about 72 seconds) and poll about every 15 seconds. Target 1-2 minutes after inclusion under normal conditions, excluding mempool waiting; RPC load, missed blocks, outages, and delivery queues can increase delay. Messages explicitly say `Preliminary` and `not finalized`.
 - Poll each chain approximately every 15-30 seconds initially, with jitter and bounded requests. These are settings to tune, not delivery SLAs.
-- If fast Ethereum alerts become a requirement, add an explicitly labeled provisional mode with later confirmation and orphan/reorg handling. Do not call a small fixed confirmation count finality.
+- Preliminary observations have a separate durable cursor/evidence store and never advance finalized coverage or overwrite the finalized ledger. Validate successful receipts and observed canonical block data before queueing. Normal finalized promotion links the same observation/outbox for that destination without a second ordinary notification. A witnessed reorg cancels unsent observations and can correct only an actually/possibly notified destination that remains authorized. Independent-provider agreement is required for changed-chain recovery; a change outside the bounded default 128-block recovery evidence pauses early monitoring for investigation. See [fast monitoring](fast-monitoring.md).
+
+### Monitoring outage notification
+
+Monitoring incidents are durable per chain. Available primary/fallback providers are tried before a check is considered unavailable; successful fallback or a checked idle head resets the consecutive-failure sequence. By default, three consecutive unavailable checks spanning at least 30 seconds open an episode. Count at most one failure per 15 seconds across Ethereum's early/finalized workers and rapid restarts. A scheduled check blocked by both provider cooldowns can count known unavailability without making a new HTTP request or shortening `Retry-After`.
+
+Queue one logical outage alert per episode for the configured internal application User ID (default `1`, not Telegram ID 1). Grant, allowlist, private-destination, and `/stop` checks remain mandatory at delivery. Queue recovery only when the outage alert was sent or could have reached that same recipient. One or two failures do not push; intentional maintenance/incomplete setup does not open an API outage. A safety-paused scanner can report unavailable monitoring. A dead host, stopped whole process group, unavailable SQLite, or Telegram failure cannot guarantee self-reporting, so independent external monitoring remains necessary.
 
 ### Telegram delivery
 
@@ -142,12 +149,14 @@ Notification content: direction, wallet label, exact USDT amount, chain, counter
 | `transfers` | Unique normalized event, raw amount, contract, addresses, block/hash, finality evidence |
 | `notification_outbox` / `outbox_authorizations` | Unique event/destination/kind, authorizing subscriptions, durable delivery state, lease and retry timing |
 | `delivery_attempts` | Bounded operational audit without tokens or secret-bearing URLs |
+| `ethereum_early_state` / `ethereum_early_events` | Separate preliminary cursor, canonical block observations, reorg evidence, and links to later finalized events |
+| `monitoring_incidents` / `monitoring_alerts` | Debounced per-chain availability episodes and privately authorized outage/recovery delivery state |
 
 Enrollment also needs a durable Telegram update offset and update-id deduplication. Start with a single supervised long-polling worker so activation does not require a public inbound HTTP endpoint. Persist update processing before acknowledging the offset; recover safely from redelivery. Inbound commands are limited to activation and account/delivery controls initially.
 
 Recommended application boundaries: `EthereumRpcClient`, `TronRpcClient`, `TransferDecoder`, `BlockScanner`, `TransferRecorder`, `Reconciler`, and `TelegramSender`. Shared scanning logic must not erase chain-specific finality and address behavior.
 
-Use supervised long-running Artisan commands for the two scanners and the outbox worker. Laravel Scheduler handles reconciliation dispatch, housekeeping, and health reporting. Worker names here describe planned roles, not commands that already exist. No Redis or Horizon is required initially; SQLite is the durable source of pending work.
+Use supervised long-running Artisan commands for finalized scanners, preliminary Ethereum observations, outbox delivery, reconciliation, backfill, polling, and backups. The native target contains nine units, including `coin-bot@ethereum-early.service` running `ethereum:early-scan`; its health name is `scan-ethereum-early`. The installer/monitoring updater adds the required heartbeat. No Redis or Horizon is required initially; SQLite is the durable source of pending work.
 
 Runtime requirements include PHP 8.5, Composer, PDO SQLite, BCMath, and Laravel's standard extensions. Pin actual packages and images during implementation. Laravel 13's published support table includes PHP 8.5.
 
@@ -193,7 +202,7 @@ Required before production:
 8. Alert externally on scanner coverage lag, finality stalls, primary/secondary disagreement, oldest pending delivery, failed destinations, stale backups, disk exhaustion, SQLite contention, and worker heartbeat loss. Do not depend exclusively on this bot's own Telegram delivery to report its failure.
 9. Expired/revoked/invalid keys, concurrent redemption, duplicate Telegram updates, revoked access with pending deliveries, and attempts to administer another user's wallets are rejected or handled idempotently as appropriate. An authorized subscriber sharing a destination must not lose delivery solely because another subscriber's access was revoked. Restoring an older backup must not make consumed keys or revoked grants usable again.
 
-The [development plan](development-plan.md) defines implementation stages P01-P13, their dependencies, and acceptance criteria. A graphical administration panel, optional shared destinations, provisional alerts, and provider webhooks are follow-up features unless explicitly enabled within the initial release scope.
+The [development plan](development-plan.md) defines implementation stages P01-P13, their dependencies, and acceptance criteria. Preliminary Ethereum observations and scoped monitoring-outage alerts are implemented with the explicit policy above; real-provider latency/quota/recovery acceptance remains pending. A graphical administration panel, optional shared destinations, and provider webhooks remain follow-up features unless explicitly enabled within the release scope.
 
 ## Evidence and limits of this design work
 

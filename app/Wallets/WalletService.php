@@ -186,7 +186,16 @@ final class WalletService
             foreach ($chains as $chain) {
                 $height = $this->cutover($chain->chain, (int) $chain->initial_start);
                 if ($resetBoundary) {
-                    $this->raiseNotificationFloor($userId, $chain->chain, $height + 1);
+                    $floor = $height + 1;
+                    if ($chain->chain === 'ethereum' && config('ethereum.early_enabled', false)) {
+                        // Enrollment holds a database transaction: use the last
+                        // durable early boundary, never perform RPC while locked.
+                        $early = DB::table('ethereum_early_state')->where('id', 1)->value('last_block');
+                        if ($early !== null) {
+                            $floor = max($floor, (int) $early + 1);
+                        }
+                    }
+                    $this->raiseNotificationFloor($userId, $chain->chain, $floor);
                 }
             }
         }, 3);
@@ -301,6 +310,15 @@ final class WalletService
     {
         $client = $this->clients->make($chain);
         $client->verifyNetwork();
+
+        if ($chain === 'ethereum' && config('ethereum.early_enabled', false)) {
+            if (! method_exists($client, 'latestBlock')) {
+                throw new InvalidArgumentException('The selected Ethereum client cannot provide an early monitoring boundary.');
+            }
+            $depth = max(1, min(64, (int) config('ethereum.confirmations', 6)));
+
+            return max(0, $client->latestBlock()['number'] - $depth) + 1;
+        }
 
         return $client->finalizedBlock()['number'] + 1;
     }

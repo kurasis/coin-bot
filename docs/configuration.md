@@ -9,9 +9,10 @@ Copy `.env.example` through `bin/setup` and supply any future credentials throug
 | `config/database.php` | SQLite location, foreign keys, busy timeout, WAL/FULL durability, IMMEDIATE transactions |
 | `config/access.php` | Activation-key lifetime, attempt limits, and throttle interval |
 | `config/blockchain.php` | Independent RPC URLs/native TRON URLs, authentication, per-provider timeouts/limits/retries, verified historical coverage |
+| `config/ethereum.php` | Optional preliminary Ethereum observations, confirmation depth, and bounded reorg recovery |
 | `config/telegram.php` | Bot credential binding, optional future staging ID, polling/request/lease timing, rate and attempt limits |
 | `config/reconciliation.php` | Persistent circuit cooldowns, repeat-scan interval, and per-chain overlap windows |
-| `config/operations.php` | Backup mode/state locations, retention, lag/health thresholds, and required workers |
+| `config/operations.php` | Backup mode/state locations, retention, lag/health thresholds, monitoring-alert recipient and debounce, and required workers |
 | `deploy/compose.yaml` | Optional future process supervision and local persistent volumes; not automatically launched |
 | `deploy/systemd/` | Native Debian worker supervision, fixed worker commands, and restricted writable paths |
 | `deploy/nginx/`, `deploy/php-fpm/` | Optional Telegram-source-only HTTPS website and private application FPM pool |
@@ -40,6 +41,24 @@ There is no default public production provider or fabricated API key. Independen
 RPC and Telegram use an explicit streaming HTTP handler. The PHP CLI runtime needs `allow_url_fopen=On`; clients fail closed if it is disabled rather than falling back to buffering an unbounded response. This does not require changing PHP-FPM settings. Response bodies are read within byte/depth/time limits and always closed. JSON is limited to depth 64 and 100,000 structural tokens before decoding; oversized RPC results trigger range splitting rather than incomplete coverage. A single oversized block remains visibly blocked. Request/header and body/read timeouts are separate windows, not one end-to-end deadline.
 
 `TELEGRAM_MAX_RESPONSE_BYTES` defaults to 2 MiB and is bounded between 1 KiB and 8 MiB. Polling rejects more than 100 returned updates before processing any of that batch. Anonymous and denied traffic without active access keeps only a recent 1,000-update-ID audit window; each poll prunes at most 1,000 old anonymous rows using an index. Existing user/key-associated evidence and reply queues are retained. This is not a general retention policy for authenticated history, transfers, or delivery audits.
+
+### Early Ethereum notifications and monitoring alerts
+
+See the [fast-monitoring guide](fast-monitoring.md) for behavior, outage handling, and the verified update procedure for existing native installations.
+
+| Setting | Default / meaning |
+| --- | --- |
+| `ETHEREUM_EARLY_ENABLED` | Runtime default `false` for unchanged old configurations; the new `.env.example` and monitoring updater explicitly select `true` |
+| `ETHEREUM_EARLY_CONFIRMATIONS` | `6` subsequent blocks before a **Preliminary**, not finalized, observation |
+| `ETHEREUM_EARLY_REORG_WINDOW` | `128` blocks of bounded reorganization recovery evidence |
+| `OPERATIONS_ALERT_USER_ID` | Internal application User ID `1`, not a Telegram ID; active private access is still required |
+| `OPERATIONS_ALERT_FAILURE_THRESHOLD` | `3` consecutive unavailable chain checks before opening an outage episode |
+| `OPERATIONS_ALERT_MIN_OUTAGE_SECONDS` | `30` minimum elapsed seconds across the counted sequence |
+| `OPERATIONS_ALERT_CHECK_INTERVAL_SECONDS` | `15` seconds between counted failures; shared by Ethereum early/finalized workers |
+
+Six subsequent Ethereum blocks normally add about 72 seconds after block inclusion, followed by polling/RPC/delivery time; 1-2 minutes is a target under normal conditions, not an SLA. Preliminary observations have less certainty and consume additional RPC quota. Finalized coverage continues separately, and normal promotion reuses the existing outbox entry without a second ordinary finalized notification. Witnessed invalidation can produce an authorized correction for a recipient that actually or possibly received the earlier observation.
+
+Fallback is attempted first; a completed check, including a checked idle head, resets failures. One or two unavailable checks do not push. Both-provider cooldown can count scheduled unavailability without violating `Retry-After`. An outage creates one logical alert per episode; recovery is only sent if the outage could have reached its still-authorized recipient. This does not provide reliable self-reporting when the host, whole worker group, SQLite, or Telegram itself is unavailable.
 
 ### One QuickNode endpoint
 

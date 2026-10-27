@@ -8,6 +8,8 @@ Multiple users have isolated wallets, settings, and notifications. Access requir
 
 The operator CLI supports [bulk wallet import from a plain text file](docs/wallet-import.md): one address per line with an explicit chain and internal user ID. Existing CSV/JSON imports remain available.
 
+[Early Ethereum monitoring](docs/fast-monitoring.md) can deliver explicitly preliminary USDT observations after six subsequent blocks, targeting 1-2 minutes after block inclusion under normal conditions. Finalized tracking remains separate. Sustained monitoring outages can notify internal User ID 1 after three unavailable checks; short failures are debounced and current private access rules still apply. New templates enable this mode; old configurations remain finalized-only until explicitly enabled or upgraded.
+
 See the [local security audit and reproducible checks](docs/security-audit-2026-10-27.md) for the HTTP/Telegram/CLI surface, confirmed findings, fixes, and remaining operational limits.
 
 See [the architecture and reliability design](docs/architecture.md) for the recommended approach and [the development plan](docs/development-plan.md) for stages P01-P13, dependencies, and acceptance criteria.
@@ -27,6 +29,8 @@ For an existing web server, use `sudo bash deploy/install-debian.sh --no-package
 The build machine can verify the full package with `bin/verify-native-install ARCHIVE debian:bookworm-slim` or `debian:trixie-slim`. These disposable native-install checks require Docker only on the build/test machine and start no application workers.
 
 Native operators can select encrypted local copies without a mount using `sudo coin-bot backup:local`; off-host storage remains the default. Existing installations can apply the verified [backup-mode update](docs/deploy-debian.md) without reinstalling or replacing private configuration/data. Developers can run `bin/verify-native-backups` to exercise the update and both policies in a network-free disposable container.
+
+For an existing supported native installation, the separately extracted full ZIP includes `deploy/update-native-monitoring.sh`; it preserves credentials/data/backup mode and installs the early worker, alert settings, and migrations while all workers are stopped. See the [upgrade steps](docs/fast-monitoring.md#existing-native-installation). Developers can exercise this path with `bin/verify-native-monitoring [FULL_ZIP]`.
 
 Repository documentation and code use English.
 

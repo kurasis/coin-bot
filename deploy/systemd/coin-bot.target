@@ -1,6 +1,6 @@
 [Unit]
 Description=Coin Bot worker group
-Wants=coin-bot@ethereum.service coin-bot@tron.service coin-bot@telegram-updates.service coin-bot@telegram-delivery.service coin-bot@backfill.service coin-bot@reconcile-ethereum.service coin-bot@reconcile-tron.service coin-bot@backups.service
+Wants=coin-bot@ethereum.service coin-bot@ethereum-early.service coin-bot@tron.service coin-bot@telegram-updates.service coin-bot@telegram-delivery.service coin-bot@backfill.service coin-bot@reconcile-ethereum.service coin-bot@reconcile-tron.service coin-bot@backups.service
 
 [Install]
 WantedBy=multi-user.target
