@@ -1,0 +1,30 @@
+Coin Bot API controls full release verification
+Source: ad2e14dec446e2a300a03a14d9c3f3fe6b33c9c1 (main, PR #3 merged)
+Archive: coin-bot-full-ad2e14d.zip
+Bytes: 8910780
+SHA-256: e1d594c4fb14bb023d377851c29e9c378fae2de68f2c9b51abdc9faac5e1f1d9
+
+PASS: bin/verify: PHP 8.5.12, runtime/SQLite/Git checks, strict Composer validation, Pint157, 473 tests / 2711 assertions; warnings/risky/deprecations fail.
+PASS: shared pacing and accounting with three independent PHP processes; deterministic Alchemy weighted pacing separates free billing chainId from throughput cost; waiting releases locks; retries counted; private data omitted; corrupt state and symlinks refused; 35-day retention; valid UTC date handling; ordinary TRON cadence vs backlog/idle/other-chain behavior.
+PASS: default repeated verification now waits 12 hours and still recovers delayed indexing without rewinding the watermark.
+PASS: source exported from merged commit with 74 locked production dependencies and Composer; fresh relocation platform checks, application boot, memory SQLite migrations.
+PASS: ZIP CRC integrity, every manifest hash, exact 6116-member list, private-env and operational-ledger exclusion, production-only vendor metadata.
+PASS: actual full-ZIP native updater regression, including custom API setting preservation (output below).
+PASS: GitHub CI for merged source, application suite plus native Debian Bookworm and Trixie jobs: https://github.com/kurasis/coin-bot/actions/runs/40570919030
+
+Limits: systemctl is simulated in native verification; no production host, actual Alchemy quota acceptance, Telegram recipient or new Infura account was accessed. Local API counters start on installation, are estimates, and daily targets are advisory. Provider billing remains authoritative. No endpoint is silently switched and no subscription was purchased. Infura setup requires the operator's own key and positive history/receipt probe before declaring its retention floor.
+
+PASS: legacy mixed-version fixture has two users and real authorized outbox children.
+PASS: live, transitioning and unavailable managers refuse before backup or mutation.
+PASS: corrupt source, customized installed code and unknown overrides are preserved and refused.
+PASS: source files, installed targets, internal directories and systemd target symlinks are refused.
+PASS: cached and uncached foreign database settings are refused without touching either database or code.
+PASS: an old local-mode cache cannot bypass the raw off-host policy.
+PASS: an unavailable backup destination blocks code/schema changes.
+PASS: real migration preserves legacy users, wallets, grants, outbox children, configuration, dependencies and sites.
+PASS: a www-data-owned shared 0777 parent is supported without changing its permissions or another site.
+PASS: the authenticated encrypted pre-upgrade backup decrypts to the actual old schema and private rows.
+PASS: rerunning the verified updater preserves selected settings and all original data.
+PASS: explicit custom TRON cadence and repeat-verification intervals survive an idempotent update.
+PASS: app-entry replacement at three service boundaries, during root mv and during rendering preserves the held tree and root canary without executing or writing the hostile tree.
+Native monitoring upgrade regression passed. Systemctl was simulated; no actual workers or messages started.
