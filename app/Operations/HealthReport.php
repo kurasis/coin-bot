@@ -131,6 +131,11 @@ class HealthReport
         } catch (Throwable) {
             $issues[] = 'database_unavailable';
         }
+        try {
+            $metrics['api_usage'] = app(ApiUsage::class)->report(methods: false);
+        } catch (Throwable) {
+            $issues[] = 'api_usage_unavailable';
+        }
         $backup = $this->backups->lastBackup();
         $metrics['backup_age_seconds'] = $this->age($backup['completed_at'] ?? null);
         if (config('operations.require_backup', true)

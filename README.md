@@ -48,3 +48,5 @@ bin/verify
 Use `bin/app php artisan list` to discover available commands. `/health` checks the application's SQLite connection; `/up` is Laravel's liveness endpoint. The bot's workers are introduced in later stages.
 
 Build/run helpers forward existing proxy settings and explicitly named application environment variables without displaying their values, and mount the host CA bundle when available, preserving TLS verification in managed environments. PHPUnit forces its isolated SQLite database and test settings even when deployment variables are present. Credentials belong in ignored environment files or secure runtime configuration, never in source control. SQLite databases and generated outputs are ignored.
+
+For API pacing, local usage estimates and an Infura Free secondary setup, see [API resource controls](docs/api-budget-controls.md).

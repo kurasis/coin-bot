@@ -30,6 +30,9 @@ try {
         $workers[] = 'scan-ethereum-early';
     }
     $values = [
+        'API_USAGE_ENABLED' => 'true',
+        'TRON_SCAN_MIN_INTERVAL_SECONDS' => $parsed['TRON_SCAN_MIN_INTERVAL_SECONDS'] ?? '15',
+        'RECONCILIATION_RECHECK_SECONDS' => ! isset($parsed['RECONCILIATION_RECHECK_SECONDS']) || $parsed['RECONCILIATION_RECHECK_SECONDS'] === '900' ? '43200' : $parsed['RECONCILIATION_RECHECK_SECONDS'],
         'ETHEREUM_EARLY_ENABLED' => 'true',
         'ETHEREUM_EARLY_CONFIRMATIONS' => '6',
         'ETHEREUM_EARLY_REORG_WINDOW' => '128',

@@ -351,10 +351,11 @@ if((int)$columns['transfer_id']->notnull!==0 || !isset($columns['early_event_id'
 $previous=json_decode(file_get_contents('/var/lib/coin-bot/monitoring-probe-env.json'),true,flags:JSON_THROW_ON_ERROR);
 $current=Dotenv\Dotenv::parse(file_get_contents('/home/www/coinbot/.env'));
 foreach($previous as $name=>$value) {
- if($name==='OPERATIONS_REQUIRED_WORKERS'||str_starts_with($name,'ETHEREUM_EARLY_')||str_starts_with($name,'OPERATIONS_ALERT_')) {continue;}
+ if(in_array($name,['API_USAGE_ENABLED','TRON_SCAN_MIN_INTERVAL_SECONDS','RECONCILIATION_RECHECK_SECONDS'],true)||$name==='OPERATIONS_REQUIRED_WORKERS'||str_starts_with($name,'ETHEREUM_EARLY_')||str_starts_with($name,'OPERATIONS_ALERT_')) {continue;}
  if(($current[$name]??null)!==$value) {throw new RuntimeException('An unrelated configuration setting changed.');}
 }
-if(config('ethereum.early_enabled')!==true || (int)config('ethereum.confirmations')!==6
+if(config('operations.api_usage_enabled')!==true || (int)config('blockchain.chains.tron.scan_min_interval_seconds')!==15
+ || (int)config('reconciliation.recheck_after_seconds')!==43200 || config('ethereum.early_enabled')!==true || (int)config('ethereum.confirmations')!==6
  || (int)config('operations.alert_user_id')!==1 || (int)config('operations.alert_failure_threshold')!==3
  || (int)config('operations.alert_min_outage_seconds')!==30
  || !in_array('scan-ethereum-early',config('operations.required_workers'),true)
@@ -423,6 +424,16 @@ test "$env_hash" = "$(sha256sum .env | cut -d ' ' -f 1)"
 app_run /usr/bin/php8.5 /tmp/coin-bot-assert-state.php >/tmp/coin-bot-assertions.log 2>&1
 test ! -e /tmp/coin-bot-forbidden-operation
 printf 'PASS: rerunning the verified updater preserves selected settings and all original data.\n'
+
+stage=custom-api-settings
+app_run /usr/bin/php8.5 -r '$path="/home/www/coinbot/.env";$text=file_get_contents($path);$text=preg_replace("/^TRON_SCAN_MIN_INTERVAL_SECONDS=.*$/m","TRON_SCAN_MIN_INTERVAL_SECONDS=20",$text);$text=preg_replace("/^RECONCILIATION_RECHECK_SECONDS=.*$/m","RECONCILIATION_RECHECK_SECONDS=21600",$text);file_put_contents($path,$text);'
+custom_hash="$(sha256sum .env | cut -d ' ' -f 1)"
+bash "$updater" >/tmp/coin-bot-update.log 2>&1
+test "$custom_hash" = "$(sha256sum .env | cut -d ' ' -f 1)"
+app_run /usr/bin/php8.5 -r 'require "/home/www/coinbot/vendor/autoload.php";$app=require "/home/www/coinbot/bootstrap/app.php";$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();if(config("blockchain.chains.tron.scan_min_interval_seconds")!==20||config("reconciliation.recheck_after_seconds")!==21600){throw new RuntimeException("Custom API settings changed.");}'
+app_run /usr/bin/php8.5 -r '$path="/home/www/coinbot/.env";$text=file_get_contents($path);$text=preg_replace("/^TRON_SCAN_MIN_INTERVAL_SECONDS=.*$/m","TRON_SCAN_MIN_INTERVAL_SECONDS=15",$text);$text=preg_replace("/^RECONCILIATION_RECHECK_SECONDS=.*$/m","RECONCILIATION_RECHECK_SECONDS=43200",$text);file_put_contents($path,$text);'
+test "$env_hash" = "$(sha256sum .env | cut -d ' ' -f 1)"
+printf 'PASS: explicit custom TRON cadence and repeat-verification intervals survive an idempotent update.\n'
 
 stage=shared-parent-races
 printf 'Private root canary; updater must never touch this file.\n' > /root/coin-bot-updater-canary

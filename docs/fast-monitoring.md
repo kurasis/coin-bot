@@ -132,3 +132,7 @@ sudo journalctl -u coin-bot@ethereum-early.service --since '10 minutes ago'
 Early monitoring adds head, receipt, and block checks and therefore increases RPC quota consumption. Reorg recovery also needs the independent provider. Verify the actual account limits and leave quota for finalization, reconciliation, and recovery. The 1-2 minute target applies to normal operation, not backlog recovery or provider throttling.
 
 Developers can run `bin/verify-native-monitoring` or `bin/verify-native-monitoring FULL_ZIP` to exercise the native update in an isolated, network-free fixture. These checks do not enroll real recipients or start production workers.
+
+## API resource controls
+
+See [API pacing and usage](api-budget-controls.md) for the shared Alchemy limiter, local usage command, conservative query spans, TRON cadence, 12-hour repeat-verification default, and the verified-account procedure for replacing a QuickNode trial with Infura Free. The native updater applies these controls while preserving actual account credentials and history declarations.

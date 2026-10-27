@@ -118,7 +118,7 @@ function verifyExisting(string $path, array $hashes): void {
     }
 }
 function allowedComponent(string $path): bool {
-    return (bool) preg_match("~^(?:app/(?:Blockchain|Monitoring|Reconciliation|Telegram|Wallets|Operations|Console/Commands)/[A-Za-z][A-Za-z0-9_]*\\.php|config/(?:ethereum|operations)\\.php|database/migrations/2026_10_27_000(?:100_add_ethereum_early_monitoring|200_create_monitoring_incidents)\\.php|deploy/(?:native-monitoring-config\\.php|coin-bot|systemd/worker|systemd/coin-bot\\.target))$~D",$path);
+    return (bool) preg_match("~^(?:app/(?:Blockchain|Monitoring|Reconciliation|Telegram|Wallets|Operations|Console/Commands)/[A-Za-z][A-Za-z0-9_]*\\.php|config/(?:ethereum|operations|blockchain|reconciliation)\\.php|database/migrations/2026_10_27_000(?:100_add_ethereum_early_monitoring|200_create_monitoring_incidents)\\.php|deploy/(?:native-monitoring-config\\.php|coin-bot|systemd/worker|systemd/coin-bot\\.target))$~D",$path);
 }
 
 $source=$argv[1]; $staging=$argv[2]; $application=".";
@@ -326,7 +326,21 @@ $uid=(int)$argv[3]; $gid=filegroup("./.env");
 if (!is_string($before)||!is_string($rendered)||strlen($before)>1048576||strlen($rendered)>1048576||$gid===false
     || is_link("./.env")||!is_file("./.env")||fileowner("./.env")!==$uid
     || (fileperms("./.env")&0077)!==0||!hash_equals(hash("sha256",$before),hash_file("sha256","./.env"))) { configFailure(); }
-$values=["ETHEREUM_EARLY_ENABLED"=>"true","ETHEREUM_EARLY_CONFIRMATIONS"=>"6","ETHEREUM_EARLY_REORG_WINDOW"=>"128",
+function oldNumber(string $contents, string $key, int $default, int $minimum, int $maximum): int {
+    $pattern="/^[\t ]*(?:export[\t ]+)?".preg_quote($key,"/")."[\t ]*=(.*)$/m";
+    $count=preg_match_all($pattern,$contents,$matches);
+    if ($count===0) { return $default; }
+    if ($count!==1) { configFailure(); }
+    $raw=trim($matches[1][0]," \t\r".chr(34).chr(39));
+    $number=filter_var($raw,FILTER_VALIDATE_INT,["options"=>["min_range"=>$minimum,"max_range"=>$maximum]]);
+    if ($number===false) { configFailure(); }
+    return $number;
+}
+$tronInterval=oldNumber($before,"TRON_SCAN_MIN_INTERVAL_SECONDS",15,1,60);
+$recheck=oldNumber($before,"RECONCILIATION_RECHECK_SECONDS",43200,60,2147483647);
+if ($recheck===900) { $recheck=43200; }
+$values=["API_USAGE_ENABLED"=>"true","TRON_SCAN_MIN_INTERVAL_SECONDS"=>(string)$tronInterval,
+    "RECONCILIATION_RECHECK_SECONDS"=>(string)$recheck,"ETHEREUM_EARLY_ENABLED"=>"true","ETHEREUM_EARLY_CONFIRMATIONS"=>"6","ETHEREUM_EARLY_REORG_WINDOW"=>"128",
     "OPERATIONS_ALERT_USER_ID"=>"1","OPERATIONS_ALERT_FAILURE_THRESHOLD"=>"3","OPERATIONS_ALERT_MIN_OUTAGE_SECONDS"=>"30",
     "OPERATIONS_ALERT_CHECK_INTERVAL_SECONDS"=>"15","OPERATIONS_REQUIRED_WORKERS"=>null];
 $cleanBefore=$before; $cleanRendered=$rendered;

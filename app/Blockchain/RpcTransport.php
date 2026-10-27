@@ -6,6 +6,8 @@ namespace App\Blockchain;
 
 use App\Blockchain\Exceptions\RangeLimitException;
 use App\Blockchain\Exceptions\RpcException;
+use App\Operations\ApiPolicy;
+use App\Operations\ApiUsage;
 use App\Support\BoundedJsonResponse;
 use GuzzleHttp\Handler\StreamHandler;
 use Illuminate\Http\Client\ConnectionException;
@@ -18,7 +20,11 @@ final class RpcTransport
 {
     private int $id = 0;
 
-    public function __construct(#[\SensitiveParameter] private readonly array $settings) {}
+    public function __construct(
+        #[\SensitiveParameter] private readonly array $settings,
+        private readonly ?string $chain = null,
+        private readonly string $provider = 'primary',
+    ) {}
 
     public function rpc(string $method, array $params): mixed
     {
@@ -40,7 +46,7 @@ final class RpcTransport
             throw new RpcException('Invalid native blockchain endpoint.');
         }
 
-        return $this->post(rtrim($this->url('native_url'), '/').$path, $params);
+        return $this->post(rtrim($this->url('native_url'), '/').$path, $params, $path);
     }
 
     private function url(string $name): string
@@ -71,7 +77,7 @@ final class RpcTransport
         return $date === false ? null : max(0, $date - time());
     }
 
-    private function post(#[\SensitiveParameter] string $url, array $payload): array
+    private function post(#[\SensitiveParameter] string $url, array $payload, ?string $operation = null): array
     {
         if (! filter_var(ini_get('allow_url_fopen'), FILTER_VALIDATE_BOOL)) {
             throw new RpcException('Blockchain requests require PHP CLI URL streaming.');
@@ -83,7 +89,12 @@ final class RpcTransport
         $attempts = max(1, min(5, (int) ($this->settings['attempts'] ?? 3)));
         $timeout = max(1, min(300, (int) ($this->settings['timeout'] ?? 20)));
         $maximumBytes = max(1024, min(32 * 1024 * 1024, (int) ($this->settings['max_response_bytes'] ?? 8 * 1024 * 1024)));
+        $policy = $this->chain !== null && config('operations.api_usage_enabled', true)
+            ? ApiPolicy::from($this->settings, $this->chain, $this->provider) : null;
         for ($attempt = 0; $attempt < $attempts; $attempt++) {
+            if ($policy !== null) {
+                app(ApiUsage::class)->admit($policy, $operation ?? $payload['method'] ?? 'other');
+            }
             $retryAfterSeconds = null;
             try {
                 $response = Http::acceptJson()->asJson()
@@ -162,6 +173,9 @@ final class RpcTransport
                 $error = new RpcException('Blockchain connection failed.', true);
             } catch (RpcException $exception) {
                 $error = $exception;
+            }
+            if ($policy !== null) {
+                app(ApiUsage::class)->failed($policy);
             }
             if (! $error->retryable || $attempt + 1 >= $attempts) {
                 throw $error;
