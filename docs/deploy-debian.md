@@ -10,6 +10,8 @@ On a server with existing websites, use `sudo bash deploy/install-debian.sh --no
 
 The bot uses CLI PHP only. Its installer does not write Nginx sites, FPM pools or PHP configuration, change CLI alternatives, or restart web services when reusing the ready runtime. PHP package installation on a clean host can change shared system packages and CLI alternatives; review any separate runtime provisioning on a host with existing sites.
 
+The CLI runtime also needs `allow_url_fopen=On` for bounded streaming HTTPS requests. Clients fail closed when it is disabled; do not change shared PHP-FPM configuration to enable a CLI-only requirement.
+
 ## 1. Install
 
 Upload the full archive as `coin-bot-full.zip` to your home directory. The command below reuses an existing PHP 8.5 CLI runtime and leaves system packages untouched. On a clean dedicated host that needs PHP, omit `--no-packages` to allow automatic provisioning.

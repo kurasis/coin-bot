@@ -1,0 +1,225 @@
+#!/usr/bin/env python3
+"""Exercise the native installer's real manifest validator and GNU tar flags.
+
+Developer-only, synthetic, network-free checks. Requires the locally built
+coin-bot-php:8.5 Docker image; no application configuration or database is loaded.
+"""
+
+from pathlib import Path
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+
+
+class ProbeFailure(RuntimeError):
+    pass
+
+
+def require(condition, message):
+    if not condition:
+        raise ProbeFailure(message)
+
+
+def check_prerequisites(environment):
+    require(shutil.which("docker") is not None, "Docker is required.")
+    require(shutil.which("tar") is not None, "GNU tar is required.")
+    version = subprocess.run(
+        ["tar", "--version"], capture_output=True, text=True, check=False
+    )
+    require(
+        version.returncode == 0 and "GNU tar" in version.stdout,
+        "GNU tar is required for the native installer's extraction flags.",
+    )
+    daemon = subprocess.run(
+        ["docker", "version", "--format", "{{.Server.Version}}"],
+        capture_output=True,
+        text=True,
+        env=environment,
+        check=False,
+    )
+    require(daemon.returncode == 0, "Cannot connect to the Docker daemon.")
+    image = subprocess.run(
+        ["docker", "image", "inspect", "coin-bot-php:8.5"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        env=environment,
+        check=False,
+    )
+    require(
+        image.returncode == 0,
+        "Local coin-bot-php:8.5 image is missing. Run bin/build first.",
+    )
+
+
+def create_fixtures(root):
+    required = [
+        "vendor/autoload.php",
+        "tools/composer.phar",
+        "artisan",
+        ".env.example",
+        "deploy/install-debian.sh",
+        "deploy/coin-bot",
+        "deploy/native-preflight.php",
+        "deploy/systemd/worker",
+        "deploy/systemd/coin-bot@.service",
+        "deploy/systemd/coin-bot.target",
+    ]
+    cases = [
+        ("valid", None, True),
+        ("traversal", "../outside-sentinel", False),
+        ("absolute", "/tmp/outside-sentinel", False),
+        ("dot_component", "safe/./bad", False),
+        ("backslash", "safe\\bad", False),
+        ("private_env", ".env", False),
+        ("private_env_variant", ".env.production", False),
+        ("git_path", ".git/config", False),
+        ("symlink_file", "linked-member", False),
+        ("symlink_parent", "linked-parent/member", False),
+        ("bad_hash", "bad-hash", False),
+        ("tar_options", "--checkpoint=1", True),
+    ]
+    expectations = []
+    for name, attack, accepted in cases:
+        directory = root / name
+        directory.mkdir()
+        files = {}
+        for relative in required:
+            path = directory / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("Inert synthetic release fixture: " + relative + "\n")
+            files[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
+        if name == "symlink_file":
+            (directory / attack).symlink_to("artisan")
+            files[attack] = files["artisan"]
+        elif name == "symlink_parent":
+            (directory / "regular-parent").mkdir()
+            (directory / "regular-parent/member").write_text("synthetic fixture")
+            (directory / "linked-parent").symlink_to(
+                "regular-parent", target_is_directory=True
+            )
+            files[attack] = hashlib.sha256(b"synthetic fixture").hexdigest()
+        elif name == "bad_hash":
+            (directory / attack).write_text("synthetic fixture")
+            files[attack] = "0" * 64
+        elif name == "tar_options":
+            for relative in [
+                attack,
+                "--checkpoint-action=exec=touch injected-marker",
+            ]:
+                (directory / relative).write_text("literal filename only")
+                files[relative] = hashlib.sha256(b"literal filename only").hexdigest()
+        elif attack is not None:
+            files[attack] = "0" * 64
+        (directory / "release-manifest.json").write_text(
+            json.dumps(
+                {
+                    "format": 1,
+                    "git_commit": "a" * 40,
+                    "source_date_epoch": 0,
+                    "files": files,
+                }
+            )
+        )
+        expectations.append([name, accepted])
+    (root / "cases.json").write_text(json.dumps(expectations))
+
+
+def main():
+    repository = Path(__file__).resolve().parent.parent
+    environment = dict(os.environ)
+    environment.setdefault("DOCKER_CONFIG", "/tmp/coin-bot-docker")
+    check_prerequisites(environment)
+
+    source = (repository / "deploy/install-debian.sh").read_text()
+    validator = re.search(
+        r"/usr/bin/php8\.5 -n -r '\n(.*?)\n' "
+        r'"\$source_root" "\$installer_tmp/members"',
+        source,
+        re.S,
+    )
+    require(
+        validator is not None,
+        "Cannot locate the native installer's embedded manifest validator.",
+    )
+
+    with tempfile.TemporaryDirectory(prefix="coin-bot-manifest-security-") as temporary:
+        root = Path(temporary)
+        (root / "validator.php").write_text("<?php\n" + validator.group(1) + "\n")
+        create_fixtures(root)
+        (root / "runner.php").write_text(
+            """<?php
+$cases = json_decode(file_get_contents('/audit/cases.json'), true, flags: JSON_THROW_ON_ERROR);
+foreach ($cases as [$name, $accepted]) {
+    $directory = '/audit/'.$name;
+    $process = proc_open([PHP_BINARY, '-n', '/audit/validator.php', $directory, $directory.'/members'],
+        [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+    if (! is_resource($process)) { fwrite(STDERR, "Cannot start manifest validator.\\n"); exit(1); }
+    stream_get_contents($pipes[1]);
+    stream_get_contents($pipes[2]);
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    $status = proc_close($process);
+    if (($status === 0) !== $accepted) {
+        fwrite(STDERR, 'Unexpected manifest result: '.$name."\\n"); exit(1);
+    }
+    echo $name.': '.($accepted ? 'accepted' : 'rejected')."\\n";
+}
+"""
+        )
+        subprocess.run(
+            [
+                "docker", "run", "--rm", "--pull=never", "--network", "none",
+                "--user", f"{os.getuid()}:{os.getgid()}",
+                "--volume", f"{temporary}:/audit", "--workdir", "/audit",
+                "coin-bot-php:8.5", "php", "-n", "/audit/runner.php",
+            ],
+            check=True,
+            env=environment,
+        )
+
+        extracted = root / "extracted"
+        extracted.mkdir()
+        fixture = root / "tar_options"
+        subprocess.run(
+            [
+                "tar", "-C", str(fixture), "--null",
+                "--files-from=" + str(fixture / "members"),
+                "-cf", str(root / "fixture.tar"),
+            ],
+            cwd=root,
+            check=True,
+        )
+        subprocess.run(
+            [
+                "tar", "-C", str(extracted), "--no-same-owner", "--same-permissions",
+                "-xf", str(root / "fixture.tar"),
+            ],
+            cwd=root,
+            check=True,
+        )
+        require(
+            not (root / "injected-marker").exists(),
+            "Tar interpreted a manifest filename as a command option.",
+        )
+        for relative in [
+            "--checkpoint=1",
+            "--checkpoint-action=exec=touch injected-marker",
+        ]:
+            require(
+                (extracted / relative).is_file(),
+                "Tar did not preserve a literal option-like filename.",
+            )
+    print("PASS: 12 actual-validator cases and GNU tar literal-option filename extraction; no command side effect.")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (OSError, ProbeFailure, subprocess.CalledProcessError) as error:
+        print(f"Security manifest probe failed: {error}", file=sys.stderr)
+        sys.exit(1)

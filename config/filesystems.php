@@ -33,7 +33,8 @@ return [
         'local' => [
             'driver' => 'local',
             'root' => storage_path('app/private'),
-            'serve' => true,
+            // Wallet imports are operator-only; expose no signed HTTP file routes.
+            'serve' => false,
             'throw' => false,
             'report' => false,
         ],

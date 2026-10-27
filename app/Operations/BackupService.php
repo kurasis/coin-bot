@@ -37,7 +37,7 @@ class BackupService
             }
             chmod($artifact, 0600);
             $this->recordBackup($artifact);
-            $this->prune($directory);
+            $this->prune($directory, $artifact);
 
             return $artifact;
         } finally {
@@ -59,12 +59,12 @@ class BackupService
         if (! is_file($artifact) || is_link($artifact)) {
             throw new RuntimeException('An existing regular backup artifact is required.');
         }
+        $key = $this->encryptionKey();
         $temporary = tempnam(dirname($target), '.restore-');
         if ($temporary === false) {
             throw new RuntimeException('Cannot allocate restore staging file.');
         }
         chmod($temporary, 0600);
-        $key = $this->encryptionKey();
         try {
             $this->decryptFile($artifact, $temporary, $key);
             $this->assertIntegrity($temporary);
@@ -301,12 +301,15 @@ class BackupService
         chmod($directory.'/backup.json', 0600);
     }
 
-    private function prune(string $directory): void
+    private function prune(string $directory, string $currentArtifact): void
     {
-        $files = glob($directory.'/coin-bot-*.cbk') ?: [];
+        // Preserve the backup just recorded even after clock rollback or a
+        // same-second random suffix that sorts before an earlier artifact.
+        $files = array_values(array_filter(glob($directory.'/coin-bot-*.cbk') ?: [],
+            static fn (string $file): bool => $file !== $currentArtifact));
         rsort($files, SORT_STRING);
         $retained = max(1, (int) config('operations.backup_retention', 1440));
-        foreach (array_slice($files, $retained) as $file) {
+        foreach (array_slice($files, $retained - 1) as $file) {
             if (is_file($file) && ! is_link($file)) {
                 unlink($file);
             }

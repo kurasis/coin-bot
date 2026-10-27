@@ -7,4 +7,4 @@ Route::get('/health', function () {
     DB::select('select 1');
 
     return response()->json(['status' => 'ok']);
-});
+})->withoutMiddleware('web');

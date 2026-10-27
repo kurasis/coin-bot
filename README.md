@@ -8,6 +8,8 @@ Multiple users have isolated wallets, settings, and notifications. Access requir
 
 The operator CLI supports [bulk wallet import from a plain text file](docs/wallet-import.md): one address per line with an explicit chain and internal user ID. Existing CSV/JSON imports remain available.
 
+See the [local security audit and reproducible checks](docs/security-audit-2026-10-27.md) for the HTTP/Telegram/CLI surface, confirmed findings, fixes, and remaining operational limits.
+
 See [the architecture and reliability design](docs/architecture.md) for the recommended approach and [the development plan](docs/development-plan.md) for stages P01-P13, dependencies, and acceptance criteria.
 
 ## Project status

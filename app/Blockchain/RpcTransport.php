@@ -6,8 +6,13 @@ namespace App\Blockchain;
 
 use App\Blockchain\Exceptions\RangeLimitException;
 use App\Blockchain\Exceptions\RpcException;
+use App\Support\BoundedJsonResponse;
+use GuzzleHttp\Handler\StreamHandler;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
+use JsonException;
+use LengthException;
+use UnexpectedValueException;
 
 final class RpcTransport
 {
@@ -68,30 +73,46 @@ final class RpcTransport
 
     private function post(#[\SensitiveParameter] string $url, array $payload): array
     {
+        if (! filter_var(ini_get('allow_url_fopen'), FILTER_VALIDATE_BOOL)) {
+            throw new RpcException('Blockchain requests require PHP CLI URL streaming.');
+        }
         $caBundle = $this->settings['ca_bundle'] ?? (getenv('SSL_CERT_FILE') ?: null);
         if ($caBundle !== null && (! is_string($caBundle) || ! is_readable($caBundle))) {
             throw new RpcException('Configured blockchain TLS CA bundle is not readable.');
         }
         $attempts = max(1, min(5, (int) ($this->settings['attempts'] ?? 3)));
+        $timeout = max(1, min(300, (int) ($this->settings['timeout'] ?? 20)));
+        $maximumBytes = max(1024, min(32 * 1024 * 1024, (int) ($this->settings['max_response_bytes'] ?? 8 * 1024 * 1024)));
         for ($attempt = 0; $attempt < $attempts; $attempt++) {
             $retryAfterSeconds = null;
             try {
                 $response = Http::acceptJson()->asJson()
-                    ->withOptions(['verify' => $caBundle ?? true, 'allow_redirects' => false])
-                    ->connectTimeout(max(1, (int) ($this->settings['connect_timeout'] ?? 15)))
-                    ->timeout(max(1, (int) ($this->settings['timeout'] ?? 20)))
+                    ->setHandler(new StreamHandler)
+                    ->withOptions(['verify' => $caBundle ?? true, 'allow_redirects' => false,
+                        'stream' => true, 'read_timeout' => $timeout])
+                    ->connectTimeout(max(1, min(60, (int) ($this->settings['connect_timeout'] ?? 15))))
+                    ->timeout($timeout)
                     ->withHeaders($this->settings['headers'] ?? [])
                     ->withBody(json_encode($payload === [] ? new \stdClass : $payload, JSON_THROW_ON_ERROR), 'application/json')
                     ->send('POST', $url);
                 if (! $response->successful()) {
                     $status = $response->status();
                     $retryHeader = $response->header('Retry-After');
+                    BoundedJsonResponse::close($response);
                     if (is_string($retryHeader)) {
                         $retryAfterSeconds = $this->retryAfterSeconds($retryHeader);
                     }
                     throw new RpcException('Blockchain HTTP request failed.', $status === 408 || $status === 429 || $status >= 500, $status, $retryAfterSeconds);
                 }
-                $body = $response->json();
+                try {
+                    $body = BoundedJsonResponse::decode($response, $maximumBytes, $timeout);
+                } catch (LengthException) {
+                    throw new RangeLimitException;
+                } catch (JsonException) {
+                    throw new RpcException('Blockchain response is not valid bounded JSON.');
+                } catch (UnexpectedValueException) {
+                    throw new RpcException('Blockchain response could not be safely read.', true);
+                }
                 if (! is_array($body)) {
                     throw new RpcException('Blockchain response is not a JSON object or array.');
                 }

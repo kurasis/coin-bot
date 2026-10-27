@@ -32,9 +32,14 @@ Use prefixes `ETHEREUM_PRIMARY`, `ETHEREUM_SECONDARY`, `TRON_PRIMARY`, and `TRON
 | `_MAX_BLOCK_RANGE` | 5,000; must reflect actual hosted-plan limits |
 | `_MAX_TOPIC_ADDRESSES` | 100; split batches as required by the account |
 | `_MAX_RESULTS` | 1,000; reaching the ceiling triggers splitting rather than assuming completeness |
+| `_MAX_RESPONSE_BYTES` | 8 MiB of decoded response data; bounded between 1 KiB and 32 MiB |
 | `_HISTORY_START_BLOCK` | Unknown when blank/unset; set only after verifying retained history on that account |
 
 There is no default public production provider or fabricated API key. Independent reconciliation waits when retention is unknown or a range predates the declared floor. A value of zero asserts verified full history; it must not be copied from fixtures as a way to bypass certification. See [provider capabilities](provider-capabilities.md).
+
+RPC and Telegram use an explicit streaming HTTP handler. The PHP CLI runtime needs `allow_url_fopen=On`; clients fail closed if it is disabled rather than falling back to buffering an unbounded response. This does not require changing PHP-FPM settings. Response bodies are read within byte/depth/time limits and always closed. JSON is limited to depth 64 and 100,000 structural tokens before decoding; oversized RPC results trigger range splitting rather than incomplete coverage. A single oversized block remains visibly blocked. Request/header and body/read timeouts are separate windows, not one end-to-end deadline.
+
+`TELEGRAM_MAX_RESPONSE_BYTES` defaults to 2 MiB and is bounded between 1 KiB and 8 MiB. Polling rejects more than 100 returned updates before processing any of that batch. Anonymous and denied traffic without active access keeps only a recent 1,000-update-ID audit window; each poll prunes at most 1,000 old anonymous rows using an index. Existing user/key-associated evidence and reply queues are retained. This is not a general retention policy for authenticated history, transfers, or delivery audits.
 
 ### One QuickNode endpoint
 

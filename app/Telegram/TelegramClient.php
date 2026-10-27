@@ -2,9 +2,14 @@
 
 namespace App\Telegram;
 
+use App\Support\BoundedJsonResponse;
+use GuzzleHttp\Handler\StreamHandler;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
+use JsonException;
+use LengthException;
 use LogicException;
+use UnexpectedValueException;
 
 class TelegramClient
 {
@@ -15,7 +20,7 @@ class TelegramClient
             'offset' => $offset, 'timeout' => $timeout, 'limit' => 100,
             'allowed_updates' => ['message'],
         ], $timeout + $this->connectTimeout() + 10);
-        if (! is_array($result) || ! array_is_list($result)) {
+        if (! is_array($result) || ! array_is_list($result) || count($result) > 100) {
             throw new TelegramException(0);
         }
 
@@ -43,13 +48,25 @@ class TelegramClient
         if (! is_string($token) || ! preg_match('/^[A-Za-z0-9:_.-]{1,512}$/D', $token)) {
             throw new LogicException('Telegram bot credentials are not configured.');
         }
+        if (! filter_var(ini_get('allow_url_fopen'), FILTER_VALIDATE_BOOL)) {
+            throw new LogicException('Telegram requests require PHP CLI URL streaming.');
+        }
+        $timeout = max(1, min(300, $timeout));
         try {
-            $response = Http::connectTimeout($this->connectTimeout())->timeout($timeout)->withOptions(['allow_redirects' => false])->asJson()
+            $response = Http::connectTimeout($this->connectTimeout())->timeout($timeout)
+                ->setHandler(new StreamHandler)
+                ->withOptions(['allow_redirects' => false, 'stream' => true, 'read_timeout' => $timeout])->asJson()
                 ->post(rtrim((string) config('telegram.api_url'), '/').'/bot'.$token.'/'.$method, $payload);
         } catch (ConnectionException) {
             throw new TelegramException(0, ambiguous: $method === 'sendMessage');
         }
-        $body = $response->json();
+        try {
+            $maximumBytes = max(1024, min(8 * 1024 * 1024, (int) config('telegram.max_response_bytes', 2 * 1024 * 1024)));
+            $body = BoundedJsonResponse::decode($response, $maximumBytes, $timeout);
+        } catch (LengthException|JsonException|UnexpectedValueException) {
+            $status = $response->successful() ? 0 : $response->status();
+            throw new TelegramException($status, ambiguous: $method === 'sendMessage' && ($status === 0 || $status >= 500));
+        }
         if (! $response->successful() || ! is_array($body) || ($body['ok'] ?? null) !== true) {
             $status = is_array($body) && is_int($body['error_code'] ?? null)
                 ? $body['error_code'] : $response->status();

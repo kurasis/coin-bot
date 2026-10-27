@@ -15,6 +15,7 @@ $provider = static function (string $prefix, bool $tron = false): array {
         'max_block_range' => (int) env($prefix.'_MAX_BLOCK_RANGE', 5000),
         'max_topic_addresses' => (int) env($prefix.'_MAX_TOPIC_ADDRESSES', 100),
         'max_results' => (int) env($prefix.'_MAX_RESULTS', 1000),
+        'max_response_bytes' => (int) env($prefix.'_MAX_RESPONSE_BYTES', 8 * 1024 * 1024),
         // Null means retention has not been certified for this actual provider account.
         'history_start_block' => $historyStart === null || (is_string($historyStart) && trim($historyStart) === '') ? null : $historyStart,
     ];

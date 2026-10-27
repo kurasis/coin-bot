@@ -42,7 +42,7 @@ class TelegramTest extends TestCase
     public function test_private_activation_persists_destination_reply_and_offset_without_storing_key(): void
     {
         $key = app(AccessService::class)->issue();
-        Http::fake(['*/getUpdates' => Http::response(['ok' => true, 'result' => [$this->update(501, '1001', '/start '.$key->token)]])]);
+        Http::fake(['*/getUpdates' => fn () => Http::response(['ok' => true, 'result' => [$this->update(501, '1001', '/start '.$key->token)]])]);
         $this->assertSame(1, app(TelegramPoller::class)->runOnce());
         $this->assertDatabaseHas('users', ['telegram_user_id' => '1001']);
         $this->assertDatabaseHas('chat_destinations', ['chat_id' => '1001', 'kind' => 'private']);

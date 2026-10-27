@@ -12,6 +12,10 @@ use Illuminate\Support\Facades\RateLimiter;
 
 final class TelegramPoller
 {
+    private const ANONYMOUS_UPDATE_WINDOW = 1000;
+
+    private const MAX_ANONYMOUS_PRUNE = 1000;
+
     public function __construct(private TelegramClient $client, private AccessService $access, private TelegramAudience $audience) {}
 
     public function runOnce(): int
@@ -52,6 +56,17 @@ final class TelegramPoller
                 }, 3);
                 $offset = $update['update_id'] + 1;
                 $processed++;
+            }
+
+            // The durable offset already acknowledges these old updates. Keep
+            // anonymous traffic bounded without deleting activation evidence or
+            // authenticated audit history; cleanup is also bounded per poll.
+            if (! $this->paused() && $offset > self::ANONYMOUS_UPDATE_WINDOW) {
+                $stale = DB::table('telegram_updates')->select('id')
+                    ->whereNull('user_id')->whereNull('access_key_id')
+                    ->where('update_id', '<', $offset - self::ANONYMOUS_UPDATE_WINDOW)
+                    ->orderBy('update_id')->limit(self::MAX_ANONYMOUS_PRUNE);
+                DB::table('telegram_updates')->whereIn('id', $stale)->delete();
             }
 
             return $processed;
@@ -127,7 +142,9 @@ final class TelegramPoller
             }
         }
         if (! DB::table('telegram_updates')->where('update_id', $id)->exists()) {
-            $this->record($id, $result, $user?->id);
+            // Previously enrolled accounts with lapsed access are still
+            // unauthenticated traffic and must share the bounded audit window.
+            $this->record($id, $result, $hadActiveAccess ? $user?->id : null);
         }
         if ($reply === null) {
             return;
