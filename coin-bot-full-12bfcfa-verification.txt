@@ -1,0 +1,27 @@
+Coin Bot full release verification
+Source: 12bfcfa606d9bb995322f3d6727b4ad3d9361e7f (main, PR #1 merged)
+Archive: coin-bot-full-12bfcfa.zip
+Bytes: 8891745
+SHA-256: 5faf3abc87c8334b1d9e6a45e8f1842d2c574ac0b51c2d0daeac7e38da1e0368
+
+PASS: bin/verify (PHP 8.5.12, strict Composer validation, Pint151, 453 tests / 2589 assertions; warnings/risky/deprecations fail).
+PASS: HTTP-boundary regressions for gateway HTTP 400/413 log limits, all blocks/addresses/directions covered before cursor advancement, payload splitting before block splitting, unclassified errors kept visible, non-log HTTP 413 kept as error, positive Retry-After preserved, sanitized worker failure attribution, read-only diagnostic cooldown status.
+PASS: bin/release from merged committed source, 74 locked production dependencies plus Composer, relocated fresh runtime platform checks, application boot, memory SQLite migrations.
+PASS: ZIP CRC integrity, all release-manifest SHA-256 hashes, exact 6109-member set, no private env file, production-only dependency metadata.
+PASS: bin/verify-native-monitoring against the actual full ZIP (output below).
+
+Limits: systemctl is simulated in native verification; no live production providers or recipients used. No access to operator Debian or production .env from this workspace. Actual deployment and observed recovery remain unverified. TRON history floors remain an operator account-retention prerequisite; HTTP 400 may still be an unsupported/rejected request rather than a recognized query limit.
+
+PASS: legacy mixed-version fixture has two users and real authorized outbox children.
+PASS: live, transitioning and unavailable managers refuse before backup or mutation.
+PASS: corrupt source, customized installed code and unknown overrides are preserved and refused.
+PASS: source files, installed targets, internal directories and systemd target symlinks are refused.
+PASS: cached and uncached foreign database settings are refused without touching either database or code.
+PASS: an old local-mode cache cannot bypass the raw off-host policy.
+PASS: an unavailable backup destination blocks code/schema changes.
+PASS: real migration preserves legacy users, wallets, grants, outbox children, configuration, dependencies and sites.
+PASS: a www-data-owned shared 0777 parent is supported without changing its permissions or another site.
+PASS: the authenticated encrypted pre-upgrade backup decrypts to the actual old schema and private rows.
+PASS: rerunning the verified updater preserves selected settings and all original data.
+PASS: app-entry replacement at three service boundaries, during root mv and during rendering preserves the held tree and root canary without executing or writing the hostile tree.
+Native monitoring upgrade regression passed. Systemctl was simulated; no actual workers or messages started.
