@@ -2,7 +2,7 @@
 
 The **full** ZIP already includes `vendor/`, Composer, the application, and its configuration templates. Use Debian 12 (Bookworm) or Debian 13 (Trixie) with sudo access and local SSD. The installer prepares the application's SQLite, permissions, migrations, and systemd. On a clean dedicated host it can also provision PHP 8.5; on an existing web host use the ready CLI runtime with `--no-packages`. No Docker or server-side Composer installation is needed.
 
-The application is installed at `/home/www/coinbot`; its private configuration is `/home/www/coinbot/.env`. The installer creates `/home/www` if absent and preserves existing parent permissions. Existing `/home` and `/home/www` must permit directory traversal for the application user and must not be symlinks. Extract the archive elsewhere before running the installer.
+The application is installed at `/home/www/coinbot`; its private configuration is `/home/www/coinbot/.env`. The installer creates `/home/www` if absent and preserves existing parent permissions. For a fresh installation, existing `/home` and `/home/www` must be root-owned, have no group/other write permission, permit application-user traversal, and be regular directories. An unsafe shared parent is refused before installation instead of changing existing sites. An already installed application with a shared parent can use the verified monitoring updater while preserving its selected backup policy. Extract the archive elsewhere before running the installer.
 
 The installer detects the supported Debian release and uses its matching PHP repository. The earlier `deploy/install-debian13.sh` command remains a compatibility entry point for both releases.
 
@@ -89,11 +89,10 @@ For an existing installation based on `88483c3` / `b908565` that already has the
 
 ```bash
 sudo coin-bot stop
-sudo bash deploy/update-native-monitoring.sh
-sudo coin-bot start
+sudo bash deploy/update-native-monitoring.sh && sudo coin-bot start
 sudo coin-bot status
 ```
 
-The updater verifies compatible code, takes an encrypted pre-upgrade backup, installs monitoring components/migrations, enables early Ethereum and internal-User-ID-1 alerts, adds the ninth worker, and reloads systemd without starting workers. Credentials, `APP_KEY`, wallets, SQLite, local/offhost backup mode, installed dependencies, and existing sites are preserved. If the managed backup policy is missing, apply `deploy/update-native-backups.sh` first as described above. The updater refuses unknown custom code or unsafe parent ownership without changing existing website parent permissions. Follow the [detailed monitoring update notes](fast-monitoring.md#existing-native-installation) if it refuses or fails; keep workers stopped until resolved.
+The updater verifies compatible code, takes an encrypted pre-upgrade backup, installs monitoring components/migrations, enables early Ethereum and internal-User-ID-1 alerts, adds the ninth worker, and reloads systemd without starting workers. Credentials, `APP_KEY`, wallets, SQLite, local/offhost backup mode, installed dependencies, and existing sites are preserved. If the managed backup policy is missing, apply `deploy/update-native-backups.sh` first as described above. An existing shared `/home/www` owner/mode is preserved, including `www-data` and `777`; the application itself and privileged system destinations must remain protected. Unknown custom code, symlinks, or unsupported overrides are refused. Follow the [detailed monitoring update notes](fast-monitoring.md#existing-native-installation) if it refuses or fails; keep workers stopped until resolved. Use [safe provider diagnostics](fast-monitoring.md#diagnose-stalled-monitoring) when a scan heartbeat stays stale or reconciliation does not advance.
 
 The bot needs no inbound website port. The optional [Telegram-only website configuration](telegram-only-website.md) is included and remains a separate setup; the installer opens no web listener or firewall port. Actual provider/recipient, backup, and production acceptance remain in the [release checklist](release-checklist.md).

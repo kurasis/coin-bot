@@ -36,7 +36,12 @@ class ChainReconcile extends Command
                 if (class_exists(Heartbeat::class)) {
                     app(Heartbeat::class)->record('reconcile-'.$chain);
                 }
-                $this->line($result->idle || $result->waitingForFinality || $result->waitingForHistory ? 'No finalized history-certified reconciliation range is currently ready.' : "Verified range {$result->rangeId}; recovered {$result->repairedEvents} events.");
+                $this->line(match (true) {
+                    $result->waitingForHistory => 'Reconciliation is waiting for verified provider history settings.',
+                    $result->waitingForFinality => 'Reconciliation is waiting for both providers to finalize the pending range.',
+                    $result->idle => 'No completed finalized range is awaiting reconciliation.',
+                    default => "Verified range {$result->rangeId}; recovered {$result->repairedEvents} events.",
+                });
             } catch (Throwable) {
                 $this->error('Reconciliation could not complete; inspect sanitized provider and conflict status.');
 

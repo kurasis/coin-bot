@@ -57,18 +57,37 @@ These messages require the application, SQLite, delivery worker, Telegram, and t
 
 Use the **new full ZIP**, extracted into a separate directory, and run the updater from that extracted `coin-bot` directory. Do not extract over `/home/www/coinbot` or rerun the first-install script.
 
-The updater supports the released native components from `88483c3` and `b908565`, including the earlier release with its verified backup-mode update. If the installation has no managed backup policy yet, apply `sudo bash deploy/update-native-backups.sh` from the new ZIP first. Select local backups with `sudo coin-bot backup:local` if that is your chosen policy; offhost mode still needs its configured mount.
+The updater supports the released native components from `88483c3`, `b908565`, and `48df016`, including the earlier release with its verified backup-mode update. If the installation has no managed backup policy yet, apply `sudo bash deploy/update-native-backups.sh` from the new ZIP first. Preserve an already selected local backup policy; offhost mode still needs its configured mount.
 
 ```bash
 sudo coin-bot stop
-sudo bash deploy/update-native-monitoring.sh
-sudo coin-bot start
+sudo bash deploy/update-native-monitoring.sh && sudo coin-bot start
 sudo coin-bot status
 ```
 
 The monitoring updater verifies compatible code, requires stopped/fenced writers, creates an encrypted pre-upgrade backup, installs the monitoring components, clears caches, and runs migrations. It preserves `APP_KEY`, credentials, SQLite user/wallet state, the selected local/offhost backup policy, installed dependencies, and existing sites. It enables the early settings above, sets the alert recipient to internal User ID 1, adds the heartbeat requirement, and reloads systemd. **It does not start workers.** Check the intended recipient before starting.
 
-The updater refuses unknown custom code, unsupported overrides, or unsafe code-parent ownership rather than changing shared parent permissions. If it refuses, keep workers stopped and review the reported paths; do not change ownership of existing website parents to force the update. If any update step fails after the backup, preserve that backup and resolve the failure before restarting.
+The updater supports an existing shared website parent such as `/home/www` owned by `www-data`, including mode `777`. It holds the verified root-owned application directory as its working directory and keeps privileged application writes relative to that directory. Application/PHP configuration rendering runs as `coin-bot`; root treats its output as bounded data and never loads installed vendor or application PHP. Root-owned protected application directories, compatible code, and protected system destinations remain required. The updater preserves website parent ownership/modes and refuses symlinks, unknown custom code, and unsupported overrides.
+
+An error from the earlier updater saying `Native code parents must be root-owned` means it stopped before installing the feature. Extract the current ZIP separately and retry its updater. Changing `/home/www` ownership or permissions is unnecessary. If any update step fails after the backup, keep workers stopped, preserve that backup, and resolve the failure before restarting.
+
+The shared parent remains part of the existing runtime trust boundary: an account that can replace the entire application path can interfere with unprivileged workers. The updater's held directory protects privileged update operations, not the entire hosting layout. Privileged `backup:local`/`backup:offhost` mode changes require protected root-owned path ancestors and refuse a shared writable parent; an already selected local/offhost policy continues to work with `start`, ordinary commands, and this updater.
+
+## Diagnose stalled monitoring
+
+A successful idle Ethereum scan records its heartbeat even while waiting for finality. A heartbeat missing for an hour and repeated worker exits indicate failed checks, not the normal finalized-block delay. The old generic failure line does not identify whether the cause is authentication, limits, transport, or blockchain data.
+
+After updating, these commands report provider roles, safe failure categories/HTTP status, heads, cooldowns, and history readiness without displaying endpoint URLs or credentials:
+
+```bash
+sudo coin-bot chain:diagnose ethereum
+sudo coin-bot chain:diagnose tron --offline
+sudo coin-bot chain:reconcile tron --once
+```
+
+`chain:diagnose` leaves cursors, transfers, provider circuits, history declarations, and incident state unchanged. Online mode makes bounded read requests to configured available providers; `--offline` makes none. Copying the JSON output is suitable for troubleshooting; do not share `.env`, complete provider URLs, or tokens.
+
+A fresh TRON scan heartbeat with growing unreconciled ranges means primary scanning and independent verification have different progress. A missing/too-high provider history floor can prevent reconciliation before any provider request. `waiting_for_history_configuration` requires verified account retention, and `waiting_for_finality` requires additional finalized provider evidence. Configure a history floor only after checking actual provider retention; `0` asserts verified full history and must not be used to silence a health warning.
 
 ## Worker and capacity
 

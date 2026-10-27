@@ -12,7 +12,9 @@ native Coin Bot installation. Extract the complete new ZIP separately first.
 Stop all Coin Bot workers and fence any other writers before this command.
 An encrypted pre-upgrade backup is required. APP_KEY, users, wallets, backup
 policy, dependencies and existing web services are preserved; no workers start.
-Custom code, overrides or unsafe code-parent ownership require manual review.
+Custom code, overrides or unsafe directories inside the app require review.
+Shared parent permissions are preserved. Keep the parent trusted for normal
+runtime use; this updater pins the app directory for privileged file changes.
 HELP
 }
 fail() { printf '%s\n' "$1" >&2; exit 1; }
@@ -42,6 +44,23 @@ source_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 staging_directory="$(mktemp -d /tmp/coin-bot-monitoring-update.XXXXXXXX)"
 trap 'rm -rf -- "$staging_directory"' EXIT
 
+# A shared hosting parent may permit renames. Hold the actual app directory
+# once: every privileged app access below is relative to this kernel CWD.
+# The visible-path checks detect a concurrent replacement; they are not the
+# security boundary and are never used to reopen a privileged app path.
+application_path=/home/www/coinbot
+[[ ! -L "$application_path" ]] || fail 'Refusing a symlinked installed application directory.'
+application_identity="$(stat -c '%d:%i' -- "$application_path")" \
+  || fail 'Cannot identify the existing application directory.'
+cd -P -- "$application_path" || fail 'Cannot pin the existing application directory.'
+[[ "$(stat -c '%d:%i' -- .)" == "$application_identity" ]] \
+  || fail 'The application path changed while it was being pinned; keep workers stopped.'
+require_pinned_path() {
+  [[ ! -L "$application_path" && "$(stat -c '%d:%i' -- "$application_path" 2>/dev/null)" == "$application_identity" ]] \
+    || fail 'The application path changed during the update. Keep workers stopped and review the shared parent; no replacement tree was used for privileged app writes.'
+}
+require_pinned_path
+
 # Verify before booting even the unprivileged application. The privileged
 # verifier never loads Laravel, writable bootstrap caches or environment data.
 /usr/bin/php8.5 -n -r '
@@ -58,7 +77,7 @@ function directoryPath(string $path, bool $protected = false): void {
     }
 }
 function parents(string $path, bool $protected = false): void {
-    for ($parent=dirname($path); $parent!=="/"; $parent=dirname($parent)) {
+    for ($parent=dirname($path); $parent!=="/" && $parent!=="."; $parent=dirname($parent)) {
         directoryPath($parent, $protected);
     }
 }
@@ -99,12 +118,12 @@ function verifyExisting(string $path, array $hashes): void {
     }
 }
 function allowedComponent(string $path): bool {
-    return (bool) preg_match("~^(?:app/(?:Blockchain|Monitoring|Reconciliation|Telegram|Wallets|Operations|Console/Commands)/[A-Za-z][A-Za-z0-9_]*\\.php|config/(?:ethereum|operations)\\.php|database/migrations/2026_10_27_000(?:100_add_ethereum_early_monitoring|200_create_monitoring_incidents)\\.php|deploy/(?:native-monitoring-config\\.php|systemd/worker|systemd/coin-bot\\.target))$~D",$path);
+    return (bool) preg_match("~^(?:app/(?:Blockchain|Monitoring|Reconciliation|Telegram|Wallets|Operations|Console/Commands)/[A-Za-z][A-Za-z0-9_]*\\.php|config/(?:ethereum|operations)\\.php|database/migrations/2026_10_27_000(?:100_add_ethereum_early_monitoring|200_create_monitoring_incidents)\\.php|deploy/(?:native-monitoring-config\\.php|coin-bot|systemd/worker|systemd/coin-bot\\.target))$~D",$path);
 }
 
-$source=$argv[1]; $staging=$argv[2]; $application="/home/www/coinbot";
+$source=$argv[1]; $staging=$argv[2]; $application=".";
 $uid=(int)$argv[3]; $gid=(int)$argv[4];
-directoryPath($application,true); parents($application."/placeholder",true);
+directoryPath($application,true);
 regularFile($application."/.env"); regularFile("/var/lib/coin-bot/database.sqlite");
 if (fileowner($application."/.env")!==$uid || (fileperms($application."/.env") & 0077)!==0) {
     rejectUpdate("Keep the native .env private and owned by coin-bot; its contents were not changed.");
@@ -130,7 +149,7 @@ if (($metadata["format"]??null)!==1 || !is_array($metadata["components"]??null)
     rejectUpdate("Invalid monitoring update component metadata.");
 }
 $guards=["app/Operations/NativeBackupPolicy.php","deploy/native-backup-config.php","deploy/native-preflight.php",
-    "deploy/systemd/coin-bot-local-backups.conf","deploy/systemd/coin-bot@.service","deploy/coin-bot",
+    "deploy/systemd/coin-bot-local-backups.conf","deploy/systemd/coin-bot@.service",
     "bootstrap/app.php","artisan","composer.lock","composer.json"];
 if (array_diff(array_keys($metadata["guards"]),$guards)!==[] || array_diff($guards,array_keys($metadata["guards"]))!==[]) {
     rejectUpdate("The native compatibility guard set is invalid.");
@@ -168,7 +187,7 @@ foreach (["composer.lock","composer.json"] as $relative) {
         rejectUpdate("Dependencies changed; use a reviewed dependency upgrade instead of this native update.");
     }
 }
-$helperHashes=array_merge(validHashes($metadata["guards"]["deploy/coin-bot"]["baseline_sha256"]),[$expected["deploy/coin-bot"]]);
+$helperHashes=array_merge(validHashes($metadata["components"]["deploy/coin-bot"]["baseline_sha256"]),[$expected["deploy/coin-bot"]]);
 verifyExisting("/usr/local/sbin/coin-bot",$helperHashes);
 verifyExisting("/etc/systemd/system/coin-bot@.service",array_merge(
     validHashes($metadata["guards"]["deploy/systemd/coin-bot@.service"]["baseline_sha256"]),[$expected["deploy/systemd/coin-bot@.service"]]));
@@ -215,8 +234,9 @@ app_mutation() {
   # changes environment configuration during this stopped-writer operation.
   app_read_raw /usr/bin/env DB_CONNECTION=sqlite DB_DATABASE=/var/lib/coin-bot/database.sqlite DB_URL=null "$@"
 }
-cd /home/www/coinbot
+require_pinned_path
 require_stopped
+require_pinned_path
 backup_mode="$(app_read_raw /usr/bin/php8.5 deploy/native-backup-config.php mode)" \
   || fail 'The installed backup policy cannot be read; no application code or schema was changed.'
 case "$backup_mode" in
@@ -243,6 +263,7 @@ fi
 if ! app_mutation /usr/bin/php8.5 artisan ops:backup --no-interaction >"$staging_directory/backup.log" 2>&1; then
   fail 'The encrypted pre-upgrade backup failed; no application code or schema was changed.'
 fi
+require_pinned_path
 printf '%s\n' 'Encrypted pre-upgrade backup completed. All writers must remain stopped.'
 
 replace_code() {
@@ -255,14 +276,18 @@ replace_code() {
   fi
 }
 require_stopped
+require_pinned_path
 while IFS=$'\t' read -r relative mode; do
-  replace_code "$relative" "$mode" "/home/www/coinbot/$relative"
+  replace_code "$relative" "$mode" "./$relative"
 done < "$staging_directory/replacements"
+require_pinned_path
 replace_code deploy/systemd/coin-bot.target 0644 /etc/systemd/system/coin-bot.target
+replace_code deploy/coin-bot 0755 /usr/local/sbin/coin-bot
 
 require_stopped
+require_pinned_path
 if ! app_run /usr/bin/php8.5 -r '
-$path="/home/www/coinbot/bootstrap/cache/config.php";
+$path="./bootstrap/cache/config.php";
 if (is_link($path) || (is_file($path) && !unlink($path))) {
     throw new RuntimeException("Cannot clear the installed native configuration cache.");
 }
@@ -271,13 +296,75 @@ if (is_link($path) || (is_file($path) && !unlink($path))) {
     || ! app_mutation /usr/bin/php8.5 artisan migrate --force --no-interaction >"$staging_directory/migrate.log" 2>&1; then
   fail 'Monitoring migrations or cache clearing failed. Keep all workers stopped; preserve the encrypted backup and investigate before starting.'
 fi
-if ! /usr/bin/php8.5 /home/www/coinbot/deploy/native-monitoring-config.php enable \
-    || ! app_mutation /usr/bin/php8.5 artisan optimize:clear --no-interaction >"$staging_directory/cache.log" 2>&1; then
+require_pinned_path
+# Only an unprivileged PHP process loads installed code and dependencies.
+# Its bounded stdout goes directly into root-private staging, never through
+# an attacker-owned output path that root might follow as a symlink.
+/usr/bin/php8.5 -n -r '
+if (is_link("./.env") || !is_file("./.env")) { exit(1); }
+$contents=file_get_contents("./.env",length:1048577);
+if (!is_string($contents)||strlen($contents)>1048576||str_contains($contents,"\0")
+    || file_put_contents($argv[1],$contents)!==strlen($contents)) { exit(1); }
+' "$staging_directory/original.env" || fail 'Cannot snapshot private configuration; keep workers stopped.'
+if ! app_run /usr/bin/timeout 30 /usr/bin/php8.5 ./deploy/native-monitoring-config.php render \
+    2>"$staging_directory/render.log" \
+    | /usr/bin/php8.5 -n -r '
+$contents=stream_get_contents(STDIN,1048577);
+if (!is_string($contents)||strlen($contents)>1048576||str_contains($contents,"\0")) { exit(1); }
+if (file_put_contents($argv[1],$contents)!==strlen($contents)) { exit(1); }
+' "$staging_directory/rendered.env"; then
+  fail 'Monitoring configuration rendering failed. Keep workers stopped; secret values were omitted.'
+fi
+require_pinned_path
+/usr/bin/php8.5 -n -r '
+function configFailure(): never {
+    fwrite(STDERR,"Monitoring configuration was not published; preserve the application key and keep workers stopped.\n");
+    exit(1);
+}
+$before=file_get_contents($argv[1],length:1048577); $rendered=file_get_contents($argv[2],length:1048577);
+$uid=(int)$argv[3]; $gid=filegroup("./.env");
+if (!is_string($before)||!is_string($rendered)||strlen($before)>1048576||strlen($rendered)>1048576||$gid===false
+    || is_link("./.env")||!is_file("./.env")||fileowner("./.env")!==$uid
+    || (fileperms("./.env")&0077)!==0||!hash_equals(hash("sha256",$before),hash_file("sha256","./.env"))) { configFailure(); }
+$values=["ETHEREUM_EARLY_ENABLED"=>"true","ETHEREUM_EARLY_CONFIRMATIONS"=>"6","ETHEREUM_EARLY_REORG_WINDOW"=>"128",
+    "OPERATIONS_ALERT_USER_ID"=>"1","OPERATIONS_ALERT_FAILURE_THRESHOLD"=>"3","OPERATIONS_ALERT_MIN_OUTAGE_SECONDS"=>"30",
+    "OPERATIONS_ALERT_CHECK_INTERVAL_SECONDS"=>"15","OPERATIONS_REQUIRED_WORKERS"=>null];
+$cleanBefore=$before; $cleanRendered=$rendered;
+foreach ($values as $key=>$expected) {
+    $pattern="/^[\t ]*(?:export[\t ]+)?".preg_quote($key,"/")."[\t ]*=(.*)(?:\n|$)/m";
+    if (preg_match_all($pattern,$rendered,$matches)!==1) { configFailure(); }
+    $value=rtrim($matches[1][0],"\r");
+    if ($expected!==null && $value!==$expected) { configFailure(); }
+    if ($expected===null && (!preg_match("/^[a-z0-9_-]+(?:,[a-z0-9_-]+)*$/D",$value)
+        || !in_array("scan-ethereum-early",explode(",",$value),true))) { configFailure(); }
+    $cleanBefore=preg_replace($pattern,"",$cleanBefore);
+    $cleanRendered=preg_replace($pattern,"",$cleanRendered);
+}
+if (!is_string($cleanBefore)||!is_string($cleanRendered)
+    || rtrim($cleanBefore,"\r\n")!==rtrim($cleanRendered,"\r\n")) { configFailure(); }
+// Do not use tempnam: its absolute return value would reopen the shared parent.
+$temporary="./.monitoring-config-".bin2hex(random_bytes(16));
+$stream=fopen($temporary,"xb");
+if ($stream===false) { configFailure(); }
+try {
+    if (fwrite($stream,$rendered)!==strlen($rendered)||!fflush($stream)||!fsync($stream)
+        || !chmod($temporary,0600)||!chown($temporary,$uid)||!chgrp($temporary,$gid)) { configFailure(); }
+    fclose($stream); $stream=null;
+    if (!rename($temporary,"./.env")) { configFailure(); }
+} finally {
+    if (is_resource($stream)) { fclose($stream); }
+    if (is_file($temporary)) { unlink($temporary); }
+}
+' "$staging_directory/original.env" "$staging_directory/rendered.env" "$coinbot_uid" "$coinbot_gid"
+require_pinned_path
+if ! app_mutation /usr/bin/php8.5 artisan optimize:clear --no-interaction >"$staging_directory/cache.log" 2>&1; then
   fail 'Monitoring configuration could not be completed. Keep workers stopped; the application key and encrypted backup must be preserved.'
 fi
+require_pinned_path
 if ! /usr/bin/systemctl daemon-reload; then
   fail 'The monitoring update is installed but systemd could not reload. Keep workers stopped and resolve the manager error before startup.'
 fi
+require_pinned_path
 
 cat <<'DONE'
 Updated early Ethereum monitoring and durable monitoring alerts. No workers were started.

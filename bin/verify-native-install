@@ -235,6 +235,29 @@ test "$(stat -c '%a' /home/www)" = 700
 test -f /home/www/preserve-fixture
 test ! -e /home/www/coinbot
 if getent passwd coin-bot >/dev/null; then exit 1; fi
+# A fresh installer must not write privileged code beneath a replaceable parent.
+# Existing installations use the separately tested updater with a held CWD.
+for unsafe_parent in writable nonroot; do
+  if [[ "$unsafe_parent" == writable ]]; then
+    chown root:root /home/www
+    chmod 0777 /home/www
+  else
+    chown www-data:www-data /home/www
+    chmod 0755 /home/www
+  fi
+  unsafe_parent_state="$(stat -c '%U:%G:%a' /home/www)"
+  unsafe_parent_hash="$(sha256sum /home/www/preserve-fixture | cut -d ' ' -f 1)"
+  if bash deploy/install-debian.sh >/tmp/coin-bot-parent-refusal.log 2>&1; then
+    echo 'An unsafe parent was unexpectedly accepted for fresh installation.' >&2
+    exit 1
+  fi
+  grep -q 'protected root-owned parent' /tmp/coin-bot-parent-refusal.log
+  test "$unsafe_parent_state" = "$(stat -c '%U:%G:%a' /home/www)"
+  test "$unsafe_parent_hash" = "$(sha256sum /home/www/preserve-fixture | cut -d ' ' -f 1)"
+  test ! -e /home/www/coinbot
+  if getent passwd coin-bot >/dev/null; then exit 1; fi
+done
+chown root:root /home/www
 chmod 0755 /home/www
 parent_state="$(stat -c '%U:%G:%a' /home/www)"
 parent_hash="$(sha256sum /home/www/preserve-fixture | cut -d ' ' -f 1)"

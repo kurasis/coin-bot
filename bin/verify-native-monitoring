@@ -43,9 +43,21 @@ test ! -e /var/lib/coin-bot
 ln -s /usr/local/bin/php /usr/bin/php8.5
 useradd --system --user-group --home-dir /var/lib/coin-bot --shell /usr/sbin/nologin coin-bot
 install -d -o root -g root -m 0755 /home/www/coinbot /etc/systemd/system
+chown www-data:www-data /home/www
+chmod 0777 /home/www
+install -d -o www-data -g www-data -m 0750 /home/www/existing-site
+printf 'Existing unrelated site bytes.\n' > /home/www/existing-site/index.html
+chown www-data:www-data /home/www/existing-site/index.html
+chmod 0640 /home/www/existing-site/index.html
+shared_parent_state="$(stat -c '%u:%g:%a' /home/www)"
+other_site_state="$(stat -c '%u:%g:%a' /home/www/existing-site /home/www/existing-site/index.html)"
+other_site_hash="$(sha256sum /home/www/existing-site/index.html | cut -d ' ' -f 1)"
 cp -a /fixtures/baseline/. /home/www/coinbot/
 cp -a /fixtures/backup/. /home/www/coinbot/
 cp -a /runtime/vendor /home/www/coinbot/vendor
+# The copied fixture dependencies refuse privileged execution. This modifies
+# only disposable container bytes; the read-only workspace vendor is untouched.
+php -n -r '$p="/home/www/coinbot/vendor/autoload.php";$s=file_get_contents($p);$g="<?php if (posix_geteuid() === 0) { file_put_contents(\"/tmp/coin-bot-root-autoload\",\"root execution\"); throw new RuntimeException(\"Installed dependencies executed as root.\"); } ?>";file_put_contents($p,$g.$s);'
 install -d -m 0755 /home/www/coinbot/tools
 cp /usr/local/bin/composer /home/www/coinbot/tools/composer.phar
 chown -R root:root /home/www/coinbot
@@ -64,6 +76,16 @@ cat > /usr/local/bin/systemctl <<'SYSTEMCTL'
 printf '%s\n' "$*" >> /tmp/coin-bot-systemctl-calls
 case "$1" in
   list-units)
+    if test -f /tmp/coin-bot-race-at; then
+      count=0
+      test ! -f /tmp/coin-bot-race-count || count="$(cat /tmp/coin-bot-race-count)"
+      count="$((count + 1))"
+      printf '%s\n' "$count" > /tmp/coin-bot-race-count
+      if test "$count" = "$(cat /tmp/coin-bot-race-at)"; then
+        rm /tmp/coin-bot-race-at
+        /bin/bash /tmp/coin-bot-race-hook
+      fi
+    fi
     test ! -f /tmp/coin-bot-manager-error || exit 1
     if test -f /tmp/coin-bot-active; then
       state="$(cat /tmp/coin-bot-active)"
@@ -212,6 +234,30 @@ test -f /etc/systemd/system/coin-bot@.service.d/custom.conf
 rm /etc/systemd/system/coin-bot@.service.d/custom.conf
 printf 'PASS: corrupt source, customized installed code and unknown overrides are preserved and refused.\n'
 
+stage=symlink-refusals
+cp -p /tmp/coin-bot-candidate/app/Console/Commands/ChainScan.php /tmp/coin-bot-linked-source.php
+rm /tmp/coin-bot-candidate/app/Console/Commands/ChainScan.php
+ln -s /tmp/coin-bot-linked-source.php /tmp/coin-bot-candidate/app/Console/Commands/ChainScan.php
+refused_unchanged
+rm /tmp/coin-bot-candidate/app/Console/Commands/ChainScan.php
+cp -p /tmp/coin-bot-linked-source.php /tmp/coin-bot-candidate/app/Console/Commands/ChainScan.php
+mv app/Console/Commands/ChainScan.php /tmp/coin-bot-linked-target.php
+ln -s /tmp/coin-bot-linked-target.php app/Console/Commands/ChainScan.php
+refused_unchanged
+rm app/Console/Commands/ChainScan.php
+mv /tmp/coin-bot-linked-target.php app/Console/Commands/ChainScan.php
+mv app/Monitoring /tmp/coin-bot-linked-directory
+ln -s /tmp/coin-bot-linked-directory app/Monitoring
+refused_unchanged
+rm app/Monitoring
+mv /tmp/coin-bot-linked-directory app/Monitoring
+mv /etc/systemd/system/coin-bot.target /tmp/coin-bot-linked-unit
+ln -s /tmp/coin-bot-linked-unit /etc/systemd/system/coin-bot.target
+refused_unchanged
+rm /etc/systemd/system/coin-bot.target
+mv /tmp/coin-bot-linked-unit /etc/systemd/system/coin-bot.target
+printf 'PASS: source files, installed targets, internal directories and systemd target symlinks are refused.\n'
+
 stage=foreign-database-refusal
 cp -p .env /tmp/coin-bot-original.env
 app_run /usr/bin/php8.5 -r '$db=new SQLite3("/var/lib/coin-bot/foreign.sqlite");$db->exec("CREATE TABLE sentinel (value TEXT)");$db->exec("INSERT INTO sentinel VALUES (\"foreign fixture\")");$db->close();'
@@ -334,11 +380,17 @@ test "$unit_hash" = "$(sha256sum /etc/systemd/system/coin-bot@.service | cut -d 
 test "$dropin_hash" = "$(sha256sum /etc/systemd/system/coin-bot@.service.d/local-backups.conf | cut -d ' ' -f 1)"
 test "$site_hashes" = "$(sha256sum /etc/nginx/sites-enabled/preserve /etc/php/8.5/fpm/pool.d/preserve.conf /etc/php/8.5/cli/preserve.ini /home/www/coinbot/preserve-local.txt)"
 test "$vendor_hash" = "$(find /home/www/coinbot/vendor -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d ' ' -f 1)"
+test "$shared_parent_state" = "$(stat -c '%u:%g:%a' /home/www)"
+test "$other_site_state" = "$(stat -c '%u:%g:%a' /home/www/existing-site /home/www/existing-site/index.html)"
+test "$other_site_hash" = "$(sha256sum /home/www/existing-site/index.html | cut -d ' ' -f 1)"
+test "$(stat -c '%u:%g:%a' /home/www/coinbot)" = 0:0:755
+test ! -e /tmp/coin-bot-root-autoload
 app_run /usr/bin/php8.5 artisan list --raw >/tmp/coin-bot-commands.list
 grep -q 'ethereum:early-scan' /tmp/coin-bot-commands.list
 grep -q 'coin-bot@ethereum-early.service' /etc/systemd/system/coin-bot.target
 test ! -e /tmp/coin-bot-forbidden-operation
 printf 'PASS: real migration preserves legacy users, wallets, grants, outbox children, configuration, dependencies and sites.\n'
+printf 'PASS: a www-data-owned shared 0777 parent is supported without changing its permissions or another site.\n'
 
 stage=preupgrade-backup-evidence
 cat > /tmp/coin-bot-assert-backup.php <<'PHP'
@@ -371,6 +423,147 @@ test "$env_hash" = "$(sha256sum .env | cut -d ' ' -f 1)"
 app_run /usr/bin/php8.5 /tmp/coin-bot-assert-state.php >/tmp/coin-bot-assertions.log 2>&1
 test ! -e /tmp/coin-bot-forbidden-operation
 printf 'PASS: rerunning the verified updater preserves selected settings and all original data.\n'
+
+stage=shared-parent-races
+printf 'Private root canary; updater must never touch this file.\n' > /root/coin-bot-updater-canary
+chmod 0600 /root/coin-bot-updater-canary
+canary_hash="$(sha256sum /root/coin-bot-updater-canary | cut -d ' ' -f 1)"
+canary_state="$(stat -c '%u:%g:%a' /root/coin-bot-updater-canary)"
+install -d -m 0755 /tmp/coin-bot-hostile-template/{app,bootstrap,config,deploy,vendor}
+cat > /tmp/coin-bot-hostile.php <<'PHP'
+<?php
+file_put_contents('/tmp/coin-bot-attacker-execution',(string)posix_geteuid()."\n",FILE_APPEND);
+@file_put_contents('/root/coin-bot-updater-canary',"Attacker-controlled PHP was executed.\n",FILE_APPEND);
+exit(97);
+PHP
+for relative in artisan vendor/autoload.php bootstrap/app.php deploy/native-backup-config.php deploy/native-preflight.php deploy/native-monitoring-config.php; do
+  install -m 0644 /tmp/coin-bot-hostile.php "/tmp/coin-bot-hostile-template/$relative"
+done
+ln -s /root/coin-bot-updater-canary /tmp/coin-bot-hostile-template/.env
+chown -hR www-data:www-data /tmp/coin-bot-hostile-template
+cat > /tmp/coin-bot-race-hook <<'RACE'
+#!/bin/bash
+set -euo pipefail
+runuser -u www-data -- /bin/bash -c '
+  set -euo pipefail
+  mv -- /home/www/coinbot /home/www/coinbot-pinned
+  cp -a -- /tmp/coin-bot-hostile-template /home/www/coinbot
+'
+touch /tmp/coin-bot-race-fired
+{
+  find /home/www/coinbot -printf '%P %y %u %g %m %l\n' | sort
+  find /home/www/coinbot -type f -print0 | sort -z | xargs -0 sha256sum
+} | sha256sum | cut -d ' ' -f 1 > /tmp/coin-bot-hostile-before
+RACE
+chmod 0700 /tmp/coin-bot-race-hook
+hostile_fingerprint() {
+  {
+    find /home/www/coinbot -printf '%P %y %u %g %m %l\n' | sort
+    find /home/www/coinbot -type f -print0 | sort -z | xargs -0 sha256sum
+  } | sha256sum | cut -d ' ' -f 1
+}
+# Calls 2/3/4 occur after the updater has pinned its application directory,
+# respectively before backup, before copying components and before migration.
+# The unprivileged attacker can rename the root-owned app entry because its
+# shared parent is writable, but cannot modify the held app directory itself.
+mv /usr/bin/mv /usr/bin/mv.fixture-real
+cat > /usr/bin/mv <<'MV_SHIM'
+#!/bin/bash
+set -euo pipefail
+destination="${@: -1}"
+if [[ -f /tmp/coin-bot-copy-race && ( "$destination" == ./app/* || "$destination" == /home/www/coinbot/app/* ) ]]; then
+  [[ $(id -u) == 0 ]] || exit 98
+  rm /tmp/coin-bot-copy-race
+  # Trigger after install has created the temporary component and immediately
+  # before its root mv. A successful real mv must stay in the held directory.
+  /bin/bash /tmp/coin-bot-race-hook
+  /usr/bin/mv.fixture-real "$@"
+  touch /tmp/coin-bot-pinned-move-succeeded
+  exit 0
+fi
+exec /usr/bin/mv.fixture-real "$@"
+MV_SHIM
+chmod 0755 /usr/bin/mv
+mv /usr/bin/php8.5 /usr/bin/php8.5.fixture-real
+cat > /usr/bin/php8.5 <<'PHP_SHIM'
+#!/bin/bash
+set -euo pipefail
+if [[ ${1:-} == ./deploy/native-monitoring-config.php && ${2:-} == render && -f /tmp/coin-bot-render-race ]]; then
+  [[ $(id -u) != 0 ]] || { touch /tmp/coin-bot-root-autoload; exit 98; }
+  touch /tmp/coin-bot-render-ready
+  for ((attempt=0;attempt<1000;attempt++)); do
+    [[ ! -f /tmp/coin-bot-render-ack ]] || break
+    sleep 0.01
+  done
+  [[ -f /tmp/coin-bot-render-ack ]] || exit 96
+fi
+exec /usr/bin/php8.5.fixture-real "$@"
+PHP_SHIM
+chmod 0755 /usr/bin/php8.5
+for boundary in 2 3 4 copy render; do
+  app_inode="$(stat -c '%d:%i' .)"
+  race_env_hash="$(sha256sum .env | cut -d ' ' -f 1)"
+  rm -f /tmp/coin-bot-race-fired /tmp/coin-bot-race-count /tmp/coin-bot-attacker-execution /tmp/coin-bot-render-race /tmp/coin-bot-render-ready /tmp/coin-bot-render-ack /tmp/coin-bot-hostile-before /tmp/coin-bot-copy-race /tmp/coin-bot-pinned-move-succeeded
+  attacker_pid=''
+  if [[ "$boundary" == copy ]]; then
+    touch /tmp/coin-bot-copy-race
+  elif [[ "$boundary" == render ]]; then
+    touch /tmp/coin-bot-render-race
+    chmod 0644 /tmp/coin-bot-render-race
+    # This attacker runs concurrently, after the final inode check preceding
+    # rendering. The shim coordinates only the disposable race, then executes
+    # the real interpreter from the updater's already-held working directory.
+    runuser -u www-data -- /bin/bash -c '
+      set -euo pipefail
+      for ((attempt=0;attempt<1000;attempt++)); do
+        [[ ! -f /tmp/coin-bot-render-ready ]] || break
+        sleep 0.01
+      done
+      [[ -f /tmp/coin-bot-render-ready ]]
+      mv -- /home/www/coinbot /home/www/coinbot-pinned
+      cp -a -- /tmp/coin-bot-hostile-template /home/www/coinbot
+      touch /tmp/coin-bot-race-fired
+      {
+        find /home/www/coinbot -printf "%P %y %u %g %m %l\n" | sort
+        find /home/www/coinbot -type f -print0 | sort -z | xargs -0 sha256sum
+      } | sha256sum | cut -d " " -f 1 > /tmp/coin-bot-hostile-before
+      touch /tmp/coin-bot-render-ack
+    ' &
+    attacker_pid=$!
+  else
+    printf '%s\n' "$boundary" > /tmp/coin-bot-race-at
+  fi
+  # The callback snapshots the replacement before the updater can continue.
+  if bash "$updater" > /tmp/coin-bot-update.log 2>&1; then exit 1; fi
+  [[ -z "$attacker_pid" ]] || wait "$attacker_pid"
+  test -f /tmp/coin-bot-race-fired
+  test ! -f /tmp/coin-bot-race-at
+  if [[ "$boundary" == copy ]]; then
+    test ! -f /tmp/coin-bot-copy-race
+    test -f /tmp/coin-bot-pinned-move-succeeded
+  fi
+  test "$app_inode" = "$(stat -c '%d:%i' .)"
+  test "$app_inode" = "$(stat -c '%d:%i' /home/www/coinbot-pinned)"
+  test "$race_env_hash" = "$(sha256sum .env | cut -d ' ' -f 1)"
+  test "$(cat /tmp/coin-bot-hostile-before)" = "$(hostile_fingerprint)"
+  test ! -e /tmp/coin-bot-attacker-execution
+  test ! -e /tmp/coin-bot-root-autoload
+  test "$canary_hash" = "$(sha256sum /root/coin-bot-updater-canary | cut -d ' ' -f 1)"
+  test "$canary_state" = "$(stat -c '%u:%g:%a' /root/coin-bot-updater-canary)"
+  test ! -e /tmp/coin-bot-forbidden-operation
+  runuser -u www-data -- rm -rf -- /home/www/coinbot
+  runuser -u www-data -- mv -- /home/www/coinbot-pinned /home/www/coinbot
+  test "$shared_parent_state" = "$(stat -c '%u:%g:%a' /home/www)"
+  test "$other_site_state" = "$(stat -c '%u:%g:%a' /home/www/existing-site /home/www/existing-site/index.html)"
+  test "$other_site_hash" = "$(sha256sum /home/www/existing-site/index.html | cut -d ' ' -f 1)"
+  app_run /usr/bin/php8.5 /tmp/coin-bot-assert-state.php > /tmp/coin-bot-assertions.log 2>&1
+done
+rm /usr/bin/php8.5
+mv /usr/bin/php8.5.fixture-real /usr/bin/php8.5
+rm /usr/bin/mv
+/usr/bin/mv.fixture-real /usr/bin/mv.fixture-real /usr/bin/mv
+rm /root/coin-bot-updater-canary
+printf 'PASS: app-entry replacement at three service boundaries, during root mv and during rendering preserves the held tree and root canary without executing or writing the hostile tree.\n'
 printf 'Native monitoring upgrade regression passed. Systemctl was simulated; no actual workers or messages started.\n'
 """
 

@@ -1,20 +1,23 @@
 <?php
 
-// Privileged configuration writes do not boot Laravel or writable app caches.
+// Rendering runs as the application user. The native updater publishes its
+// bounded output without loading installed PHP or dependencies as root.
 try {
-    if (($argv[1] ?? '') !== 'enable' || count($argv) !== 2) {
-        throw new RuntimeException('Use enable.');
+    if (($argv[1] ?? '') !== 'render' || count($argv) !== 2
+        || ! function_exists('posix_geteuid') || posix_geteuid() === 0) {
+        throw new RuntimeException('Use render as the unprivileged application user.');
     }
-    $root = dirname(__DIR__);
+    $root = '.';
     require $root.'/vendor/autoload.php';
     $path = $root.'/.env';
     if (! is_file($path) || is_link($path)) {
         throw new RuntimeException('A regular installed configuration is required.');
     }
-    $contents = file_get_contents($path);
+    $contents = file_get_contents($path, length: 1048577);
     $owner = fileowner($path);
     $group = filegroup($path);
-    if ($contents === false || $owner === false || $group === false) {
+    if ($contents === false || strlen($contents) > 1048576 || str_contains($contents, "\0")
+        || $owner === false || $group === false) {
         throw new RuntimeException('Cannot read private configuration metadata.');
     }
     $parsed = Dotenv\Dotenv::parse($contents);
@@ -51,21 +54,7 @@ try {
             throw new RuntimeException('An unrelated configuration value would change.');
         }
     }
-    $temporary = tempnam($root, '.monitoring-config-');
-    if ($temporary === false) {
-        throw new RuntimeException('Cannot stage private monitoring configuration.');
-    }
-    try {
-        if (! chmod($temporary, 0600) || file_put_contents($temporary, $contents) !== strlen($contents)
-            || ! chown($temporary, $owner) || ! chgrp($temporary, $group) || ! rename($temporary, $path)) {
-            throw new RuntimeException('Cannot publish private monitoring configuration.');
-        }
-    } finally {
-        if (is_file($temporary)) {
-            unlink($temporary);
-        }
-    }
-    echo 'Early Ethereum monitoring and three-check operator alerts enabled. Existing credentials, backup policy and other settings preserved.'.PHP_EOL;
+    echo $contents;
 } catch (Throwable) {
     fwrite(STDERR, 'Monitoring configuration failed. Check file permissions and syntax; secret values are omitted.'.PHP_EOL);
     exit(1);

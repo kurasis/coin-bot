@@ -34,10 +34,29 @@ require_stopped() {
     exit 1
   fi
 }
+require_protected_backup_paths() {
+  local path path_mode
+  # These commands install a privileged service override and run a configuration
+  # writer. Protect every name-resolution component before reading app content;
+  # a root-owned child alone is replaceable beneath a writable shared parent.
+  for path in / /home /home/www /home/www/coinbot; do
+    if [[ -L "$path" || ! -d "$path" ]]; then
+      echo 'Backup mode changes require a regular protected application path; existing paths were preserved.' >&2
+      exit 1
+    fi
+    path_mode="$(stat -c '%a' -- "$path")"
+    if [[ "$(stat -c '%u' -- "$path")" != 0 ]] || (( (8#$path_mode & 0022) != 0 )); then
+      printf 'Backup mode changes require root-owned application ancestors without group/other write access: %s\n' "$path" >&2
+      echo 'Existing permissions and the selected backup mode were preserved. Review the deployment path before changing backup modes.' >&2
+      exit 1
+    fi
+  done
+}
 configure_backups() {
   local mode="$1" drop_in=/etc/systemd/system/coin-bot@.service.d/local-backups.conf
   local template=/home/www/coinbot/deploy/systemd/coin-bot-local-backups.conf
   local directory=/etc/systemd/system/coin-bot@.service.d override directory_mode
+  require_protected_backup_paths
   require_stopped
   if [[ -L /etc/systemd/system/coin-bot@.service.d || -L "$drop_in" ]]; then
     echo 'Refusing symlinked Coin Bot backup settings.' >&2; exit 1

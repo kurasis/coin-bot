@@ -72,6 +72,9 @@ for parent in /home /home/www; do
     [[ -d "$parent" ]] || fail "$parent must be a directory."
     parent_mode="$(stat -c '%a' -- "$parent")"
     (( (8#$parent_mode & 1) != 0 )) || fail "$parent must permit application-user directory traversal. Existing parent permissions were left unchanged."
+    if [[ "$(stat -c '%u' -- "$parent")" != 0 ]] || (( (8#$parent_mode & 0022) != 0 )); then
+      fail "Fresh installation requires protected root-owned parent directories: $parent. Existing sites, ownership and permissions were preserved; use the verified monitoring updater for an existing installation."
+    fi
   fi
 done
 [[ ! -e "$application_dir" && ! -L "$application_dir" ]] || fail '/home/www/coinbot already exists. Existing code and secrets were left unchanged.'
