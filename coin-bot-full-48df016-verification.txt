@@ -1,0 +1,19 @@
+Coin Bot complete development package verification
+Source commit: 48df016c8822401b1b68e117ce63f591de9a51f3
+Archive: coin-bot-full-48df016.zip
+SHA-256: 4d47cbb505f0b54fad6fbcd0e611cb2d3d3fff1f62b6d80b305399e3870ff60e
+Archive bytes: 8872112
+ZIP members: 6105
+Production dependencies: 74; Composer bundled; no development dependencies.
+
+Executed local checks:
+- Strict bin/verify on PHP 8.5.12: 425 tests / 2397 assertions, Pint 147 PHP files, Composer validation, SQLite durability and staged-secret heuristics.
+- Deterministic real CLI/SQLite/controlled HTTP cases: six-block preliminary Ethereum flow; finalized promotion and per-destination deduplication; independently witnessed reorg correction; canonical/in-flight races; authorization; three-check/30-second incident debounce; shared worker/restart state; healthy fallback; long 429 Retry-After without extra HTTP; outage/recovery handling.
+- Actual committed full ZIP: every manifest/member hash, safe paths, private-artifact exclusion, blank credential placeholders, executable modes, new monitoring/migration components, 74 production dependencies.
+- Actual ZIP relocation: production platform checks, autoload, package discovery, all migrations with isolated memory SQLite.
+- Actual full ZIP network-free native update harness: all nine fixture stages passed against a mixed 88483c3 + b908565 installation. Real synthetic SQLite data, outbox/auth/attempt state, local backup policy, APP_KEY and existing website/FPM/INI fixtures were preserved; encrypted pre-upgrade backup decrypts to the old schema; idempotency and guarded refusal cases passed. Stale cached database/key settings cannot redirect migration or backup. Systemctl was simulated; no real workers or messages started.
+- 28 runtime update components and 10 compatibility guards; Bash/Python syntax and guide shell blocks/local links passed.
+
+Existing native installation: extract the ZIP separately, stop Coin Bot, run deploy/update-native-monitoring.sh, then start/status. Do not rerun the first-install script over existing state. The updater enables early Ethereum notifications and operational alerts to internal User ID 1 automatically; no website packages or Nginx/FPM settings are changed.
+
+Latency is a target after block inclusion, not an SLA or Ethereum consensus finality. Real provider quotas/head freshness, live Telegram, actual systemd namespaces, off-host durability and production operation were not validated. Whole-host/database/Telegram failures require independent external monitoring. Unknown custom code or unsafe parent ownership requires review instead of automatic replacement.
