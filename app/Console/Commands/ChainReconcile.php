@@ -6,13 +6,15 @@ namespace App\Console\Commands;
 
 use App\Blockchain\ChainClientFactory;
 use App\Operations\Heartbeat;
+use App\Operations\SanitizedFailure;
 use App\Reconciliation\Reconciler;
+use App\Reconciliation\ReconciliationResult;
 use Illuminate\Console\Command;
 use Throwable;
 
 class ChainReconcile extends Command
 {
-    protected $signature = 'chain:reconcile {chain : ethereum or tron} {--once} {--interval=30}';
+    protected $signature = 'chain:reconcile {chain : ethereum or tron} {--once} {--interval=30} {--batch=25 : Maximum durable ranges per bounded head snapshot}';
 
     protected $description = 'Verify completed live ranges using independent finalized provider evidence';
 
@@ -27,23 +29,28 @@ class ChainReconcile extends Command
             }
         }
         $interval = filter_var($this->option('interval'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 3600]]);
-        if ($interval === false) {
+        $batch = filter_var($this->option('batch'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 100]]);
+        if ($interval === false || $batch === false) {
             return self::INVALID;
         }
         do {
             try {
-                $result = $reconciler->reconcile($factory->make($chain), $factory->make($chain, 'secondary'));
-                if (class_exists(Heartbeat::class)) {
-                    app(Heartbeat::class)->record('reconcile-'.$chain);
-                }
-                $this->line(match (true) {
-                    $result->waitingForHistory => 'Reconciliation is waiting for verified provider history settings.',
-                    $result->waitingForFinality => 'Reconciliation is waiting for both providers to finalize the pending range.',
-                    $result->idle => 'No completed finalized range is awaiting reconciliation.',
-                    default => "Verified range {$result->rangeId}; recovered {$result->repairedEvents} events.",
-                });
-            } catch (Throwable) {
+                $results = $reconciler->reconcileBatch($factory->make($chain), $factory->make($chain, 'secondary'), $this->option('once') ? 1 : $batch,
+                    function (ReconciliationResult $result) use ($chain): void {
+                        // Report each committed range immediately, even if a
+                        // later range in this batch cannot finish.
+                        app(Heartbeat::class)->record('reconcile-'.$chain);
+                        $this->line(match (true) {
+                            $result->waitingForHistory => 'Reconciliation is waiting for verified provider history settings.',
+                            $result->waitingForFinality => 'Reconciliation is waiting for both providers to finalize the pending range.',
+                            $result->idle => 'No completed finalized range is awaiting reconciliation.',
+                            default => "Verified range {$result->rangeId}; recovered {$result->repairedEvents} events.",
+                        });
+                    });
+                $result = $results[array_key_last($results)];
+            } catch (Throwable $error) {
                 $this->error('Reconciliation could not complete; inspect sanitized provider and conflict status.');
+                $this->line(json_encode(['failure' => SanitizedFailure::details($error)], JSON_THROW_ON_ERROR));
 
                 return self::FAILURE;
             }

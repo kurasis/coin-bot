@@ -13,6 +13,7 @@ use App\Monitoring\ScanException;
 use App\Monitoring\TransferDecoder;
 use App\Operations\MaintenanceGuard;
 use Illuminate\Support\Facades\DB;
+use InvalidArgumentException;
 
 final class Reconciler
 {
@@ -24,6 +25,32 @@ final class Reconciler
         private readonly TransferDecoder $decoder = new TransferDecoder,
         private readonly ProviderCircuitBreaker $circuits = new ProviderCircuitBreaker,
     ) {}
+
+    /** Drain small durable ranges without repeating network/head RPCs for each one. */
+    public function reconcileBatch(ChainClient $primary, ChainClient $secondary, int $maximumRanges = 25, ?callable $onResult = null): array
+    {
+        if ($maximumRanges < 1 || $maximumRanges > 100) {
+            throw new InvalidArgumentException('Reconciliation batch must contain between 1 and 100 ranges.');
+        }
+        $primary = new FinalizedHeadSnapshot($primary);
+        $secondary = new FinalizedHeadSnapshot($secondary);
+        $started = hrtime(true);
+        $results = [];
+        do {
+            // Every range still checks maintenance, history, both circuits,
+            // boundary hashes, independent logs and receipts, and commits alone.
+            $result = $this->reconcile($primary, $secondary);
+            $results[] = $result;
+            if ($onResult !== null) {
+                $onResult($result);
+            }
+            if ($result->idle || $result->waitingForFinality || $result->waitingForHistory) {
+                break;
+            }
+        } while (count($results) < $maximumRanges && hrtime(true) - $started < 15_000_000_000);
+
+        return $results;
+    }
 
     public function reconcile(ChainClient $primary, ChainClient $secondary): ReconciliationResult
     {

@@ -110,6 +110,16 @@ The monitoring updater does not invent provider retention settings. If both TRON
 
 If an account cannot serve the oldest pending range, restore access through a suitable account/provider. Do not delete the queue or advance a watermark past unverified coverage to clear health issues. Ethereum's history floors also need verification before its new finalized ranges can be independently reconciled.
 
+## Catching up a TRON reconciliation backlog
+
+A live scanner can produce many one- or two-block ranges. Revalidating the network and finalized head for every range, plus a one-second pause after each range, can make independent verification fall behind even with fresh worker heartbeats. Compare `reconciliation_lag_blocks_tron` and `oldest_unreconciled_age_tron` over time as well as pending range counts: a falling count alone does not establish catch-up when range widths differ.
+
+The reconciliation daemon now drains bounded batches, defaulting to at most 25 ranges. Each provider's network verification and conservative finalized head are shared only within that batch. A new batch starts no additional ranges once 15 seconds have elapsed; an in-flight range may finish later. All boundary blocks, log queries and receipt witnesses still use per-range checks and per-range caches, and each range commits separately. History floors, maintenance, paused cursors, provider cooldowns, finality waits, conflicts and contiguous-watermark checks still apply to each range. An error stops the batch; previously committed ranges remain verified, and unfinished ranges remain pending. The default pause is one second after a productive batch and the configured idle interval after waiting/idle results.
+
+Use `chain:reconcile tron --batch=1` to limit the daemon to one range per batch if the actual account needs a slower schedule. The supported maximum is 100. `--once` continues to process at most one range regardless of `--batch`. Batching reduces redundant calls and pauses; it is not permission to ignore provider quotas, reset cooldowns or start concurrent reconciliation workers.
+
+Install with the full ZIP's usual native monitoring updater while workers are stopped, then start the existing target. The updater supports the `12bfcfa` components and preserves verified history-floor settings and all existing queues. No schema migration, extra worker or endpoint change is introduced. Measure catch-up on the actual accounts after updating; synthetic request counts do not predict a live recovery time.
+
 ## Worker and capacity
 
 The additional ninth native unit is `coin-bot@ethereum-early.service`, running `ethereum:early-scan` with a normal 15-second interval. Its health name is `scan-ethereum-early`; the native installer/updater adds it to `OPERATIONS_REQUIRED_WORKERS`. The existing `coin-bot start` command starts the complete target, including this unit. To inspect the early worker:

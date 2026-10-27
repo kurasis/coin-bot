@@ -4,7 +4,8 @@
     "88483c3d88e8106af5b7c8e5a61e86dae3ba7040",
     "b908565e184466e46c10503c042a539827b4ebbc",
     "48df016c8822401b1b68e117ce63f591de9a51f3",
-    "20631d248258d9bf162ce4fa49baa7fd4a6841c5"
+    "20631d248258d9bf162ce4fa49baa7fd4a6841c5",
+    "12bfcfa606d9bb995322f3d6727b4ad3d9361e7f"
   ],
   "components": {
     "app/Blockchain/EthereumRpcClient.php": {
@@ -18,20 +19,24 @@
     "app/Blockchain/QueryPayloadLimitException.php": {
       "mode": 420,
       "required": false,
-      "baseline_sha256": []
+      "baseline_sha256": [
+        "40ef89d6f40a1eb04e0d4d9879725dddc524e52e1a83dfea8b0fe1abc2f67417"
+      ]
     },
     "app/Blockchain/RpcTransport.php": {
       "mode": 420,
       "required": true,
       "baseline_sha256": [
-        "b09c9be1ec35944d12434f60191c4f6a07bbde97e8a934d1bf8a2c5d18b13af3"
+        "b09c9be1ec35944d12434f60191c4f6a07bbde97e8a934d1bf8a2c5d18b13af3",
+        "e01b1c6d80d0c3e0851b452dbf434d4c89745335ecdb935823a8b710881ef481"
       ]
     },
     "app/Console/Commands/ChainDiagnose.php": {
       "mode": 420,
       "required": false,
       "baseline_sha256": [
-        "23f5b910e19c209a8ec3d6938c1d23e46e45aee160d814b699c16359ed65da34"
+        "23f5b910e19c209a8ec3d6938c1d23e46e45aee160d814b699c16359ed65da34",
+        "8cd745513e0dcd1bc8e95d894777f47408b3cb2ae01b0349f04ae98b1bbe71c0"
       ]
     },
     "app/Console/Commands/ChainReconcile.php": {
@@ -47,14 +52,16 @@
       "required": true,
       "baseline_sha256": [
         "7477141e331e0d605961a4b32bb12e766ed443e29682937030a7cd677ea98f21",
-        "2dbf39a3030743167e210a61e31b8a06e3c87cf03eef47e9b2a9a1ef3deb8f3b"
+        "2dbf39a3030743167e210a61e31b8a06e3c87cf03eef47e9b2a9a1ef3deb8f3b",
+        "546f5124d0debae42f6a67585e79868ce10dd330b8bbfe19770ffad181a2302e"
       ]
     },
     "app/Console/Commands/EthereumEarlyScan.php": {
       "mode": 420,
       "required": false,
       "baseline_sha256": [
-        "1a94603d7117f6b447879bf84e689a4ebf6af3555029590164467b6eee78eca5"
+        "1a94603d7117f6b447879bf84e689a4ebf6af3555029590164467b6eee78eca5",
+        "5c023e33d4afcc30ec2ef1c886322b84cfef4833154ec700d4075a3eeeb870cc"
       ]
     },
     "app/Console/Commands/TelegramDeliver.php": {
@@ -70,21 +77,24 @@
       "required": true,
       "baseline_sha256": [
         "41dc738b2498aceebd4bbc25f6e4d093699470c6f0c2558cf89c25de4edf4b1d",
-        "c7393fc749507c43edb651e323b6ec298e045921714789a219fef46b5f589802"
+        "c7393fc749507c43edb651e323b6ec298e045921714789a219fef46b5f589802",
+        "82159a702cb2487e736d54469d9991e450b0cc6ac8045ea57f978642864c6650"
       ]
     },
     "app/Monitoring/CheckAttempt.php": {
       "mode": 420,
       "required": false,
       "baseline_sha256": [
-        "0345637e79ecfd1a01a63d1599c414a3ded8af9b5aa5619736c2a794f3aad18c"
+        "0345637e79ecfd1a01a63d1599c414a3ded8af9b5aa5619736c2a794f3aad18c",
+        "d19e203fc7b5d396cd1e4c1b94ded8f7ee3718f865f29d01b4b7533613b0a089"
       ]
     },
     "app/Monitoring/CheckedChainClient.php": {
       "mode": 420,
       "required": false,
       "baseline_sha256": [
-        "73565554b613120cc10cb4b8fb10b80b637559cdf2a8ae042802194c40e8268b"
+        "73565554b613120cc10cb4b8fb10b80b637559cdf2a8ae042802194c40e8268b",
+        "bdcc1abdf2944b42e199f715ad271fb827e0119b2ec50657b606dd20407ce0e8"
       ]
     },
     "app/Monitoring/EarlyWitnessException.php": {
@@ -142,7 +152,21 @@
     "app/Operations/SanitizedFailure.php": {
       "mode": 420,
       "required": false,
+      "baseline_sha256": [
+        "0c5857d07de10ee6cb6dfc6e27477a547a7fbe43c6b1048da30945ef4bb154d7"
+      ]
+    },
+    "app/Reconciliation/FinalizedHeadSnapshot.php": {
+      "mode": 420,
+      "required": false,
       "baseline_sha256": []
+    },
+    "app/Reconciliation/Reconciler.php": {
+      "mode": 420,
+      "required": true,
+      "baseline_sha256": [
+        "0fb574c7a5ecaba63d0f65868977544d1f1acfe62a44aa6940579bd3c9436d7f"
+      ]
     },
     "app/Reconciliation/ResilientEarlyScanner.php": {
       "mode": 420,
