@@ -89,6 +89,27 @@ sudo coin-bot chain:reconcile tron --once
 
 A fresh TRON scan heartbeat with growing unreconciled ranges means primary scanning and independent verification have different progress. A missing/too-high provider history floor can prevent reconciliation before any provider request. `waiting_for_history_configuration` requires verified account retention, and `waiting_for_finality` requires additional finalized provider evidence. Configure a history floor only after checking actual provider retention; `0` asserts verified full history and must not be used to silence a health warning.
 
+## HTTP 400/413 recovery
+
+The 2026-10-27 incident showed Ethereum primary HTTP 400, secondary HTTP 413, a stalled finalized cursor, and TRON `waiting_for_history_configuration`. These are separate failure paths; an open provider circuit alone does not establish rate limiting.
+
+The current transport treats HTTP 413 **on `eth_getLogs` only** as a query payload limit. The scanner first halves the address topic array, then reduces the block range if needed. A positive `Retry-After` on HTTP 413 defers requests instead of splitting immediately. HTTP 400 is treated as a query limit only when its bounded JSON-RPC error explicitly reports a recognized range/result/payload limit. Authentication errors, malformed error bodies, and unclassified HTTP 400 responses remain provider failures. HTTP 413 on network/head/receipt operations remains a provider error too. If a single-block/single-address query still fails, coverage stays unfinished. No cursor reset, skipped range, fabricated finality, or circuit reset is required.
+
+Use the full ZIP's native monitoring updater as above. It preserves the existing provider settings; it does not replace accounts or silently select public endpoints. Existing mandatory cooldowns remain in force after updating. A first check may still wait up to the remaining circuit delay or the provider's `Retry-After`.
+
+Scanner failure lines now include a second JSON line with fixed categories, HTTP status, provider role and failed operation (`network`, `finalized`, `block`, `logs_incoming`, `logs_outgoing`, or `receipt`). URLs, addresses, request bodies, exception messages, and traces are excluded. `chain:diagnose` also reports each selected provider's persisted `last_failure.http_status` and `consecutive_failures` during cooldown. These fields describe the last stored circuit failure, not a new request or proof that the endpoint is still failing. An unclassified 400 needs its operation and actual account capabilities investigated; it cannot safely be assumed to be a size limit.
+
+### TRON history prerequisite
+
+The monitoring updater does not invent provider retention settings. If both TRON history floors are unknown, reconciliation deliberately waits even when scanning and its heartbeat are healthy.
+
+1. Run `sudo coin-bot chain:diagnose tron --offline` and note `oldest_from_block` and `oldest_to_block`.
+2. Verify historical log and receipt access on **both actual configured accounts**, including known matching transfers at the required boundary. `chain:probe tron --provider=primary --from=<first> --to=<last> --address=<known-transfer-address>` and the equivalent `--provider=secondary` are read-only sampled checks; an empty response alone does not certify retention. Check the account's documented retention as well.
+3. Stop workers with `sudo coin-bot stop`. Use `sudoedit /home/www/coinbot/.env` to set `TRON_PRIMARY_HISTORY_START_BLOCK` and `TRON_SECONDARY_HISTORY_START_BLOCK` to the verified lower boundaries. Each must cover the oldest pending block. In the reported incident that block was **87477900**; this observation is a coverage requirement, not evidence that either account supports history from that height. Do not set `0` unless full history has actually been verified.
+4. Run `sudo coin-bot config:clear`, then `sudo coin-bot chain:reconcile tron --once`. A successful check reports a verified range. Restart with `sudo coin-bot start` and monitor `sudo coin-bot status`; clearing a backlog takes time and depends on RPC limits.
+
+If an account cannot serve the oldest pending range, restore access through a suitable account/provider. Do not delete the queue or advance a watermark past unverified coverage to clear health issues. Ethereum's history floors also need verification before its new finalized ranges can be independently reconciled.
+
 ## Worker and capacity
 
 The additional ninth native unit is `coin-bot@ethereum-early.service`, running `ethereum:early-scan` with a normal 15-second interval. Its health name is `scan-ethereum-early`; the native installer/updater adds it to `OPERATIONS_REQUIRED_WORKERS`. The existing `coin-bot start` command starts the complete target, including this unit. To inspect the early worker:

@@ -3,7 +3,8 @@
   "compatible_baselines": [
     "88483c3d88e8106af5b7c8e5a61e86dae3ba7040",
     "b908565e184466e46c10503c042a539827b4ebbc",
-    "48df016c8822401b1b68e117ce63f591de9a51f3"
+    "48df016c8822401b1b68e117ce63f591de9a51f3",
+    "20631d248258d9bf162ce4fa49baa7fd4a6841c5"
   ],
   "components": {
     "app/Blockchain/EthereumRpcClient.php": {
@@ -14,16 +15,31 @@
         "c369ce2d1a0d998d97ebe9a2919a9482a20c1886717dd55e77686bbebae90497"
       ]
     },
-    "app/Console/Commands/ChainDiagnose.php": {
+    "app/Blockchain/QueryPayloadLimitException.php": {
       "mode": 420,
       "required": false,
       "baseline_sha256": []
+    },
+    "app/Blockchain/RpcTransport.php": {
+      "mode": 420,
+      "required": true,
+      "baseline_sha256": [
+        "b09c9be1ec35944d12434f60191c4f6a07bbde97e8a934d1bf8a2c5d18b13af3"
+      ]
+    },
+    "app/Console/Commands/ChainDiagnose.php": {
+      "mode": 420,
+      "required": false,
+      "baseline_sha256": [
+        "23f5b910e19c209a8ec3d6938c1d23e46e45aee160d814b699c16359ed65da34"
+      ]
     },
     "app/Console/Commands/ChainReconcile.php": {
       "mode": 420,
       "required": true,
       "baseline_sha256": [
-        "99d44226a6c8340d7dbd4bbefaa73bac9c455352772df9500e681a0dd7ad65d3"
+        "99d44226a6c8340d7dbd4bbefaa73bac9c455352772df9500e681a0dd7ad65d3",
+        "b3711fcf669308ed9fb34ce6791eb9aecf7535741f0a97dcfccb730e9dab2ff7"
       ]
     },
     "app/Console/Commands/ChainScan.php": {
@@ -123,6 +139,11 @@
         "3dd3b51a8411a80a2b9ee5c879bd90c2d4f24d1b5d173fe6f53a02449f3ded63"
       ]
     },
+    "app/Operations/SanitizedFailure.php": {
+      "mode": 420,
+      "required": false,
+      "baseline_sha256": []
+    },
     "app/Reconciliation/ResilientEarlyScanner.php": {
       "mode": 420,
       "required": false,
@@ -212,14 +233,16 @@
       "required": true,
       "baseline_sha256": [
         "5b1eb36049dc5add3ab65e2f34ef76fb20325061a4ebd0a36b352b01c2f67b2c",
-        "9ea4dad1693329011b94fb307f5e955f37d690898f2c08fd7cf44d70ee1dc237"
+        "9ea4dad1693329011b94fb307f5e955f37d690898f2c08fd7cf44d70ee1dc237",
+        "eee39ab8006be911616b80d9999db414b284e1210ffb5e7587ebc44bc3924196"
       ]
     },
     "deploy/native-monitoring-config.php": {
       "mode": 420,
       "required": false,
       "baseline_sha256": [
-        "d07daa973f1b8bdd899c79ef09f005ed7ef05bf54b61222cd458893974d6e2b3"
+        "d07daa973f1b8bdd899c79ef09f005ed7ef05bf54b61222cd458893974d6e2b3",
+        "a18c0553736ffcdda71b1f723e85bfbd19e6a7815f5f75b0c8350ac832cf0862"
       ]
     },
     "deploy/systemd/coin-bot.target": {

@@ -11,6 +11,7 @@ use App\Monitoring\ScanException;
 use App\Operations\Heartbeat;
 use App\Operations\MaintenanceGuard;
 use App\Operations\MonitoringIncidentService;
+use App\Operations\SanitizedFailure;
 use App\Reconciliation\ResilientEarlyScanner;
 use Illuminate\Console\Command;
 use Throwable;
@@ -29,6 +30,7 @@ final class EthereumEarlyScan extends Command
             return self::INVALID;
         }
         do {
+            $attempt = null;
             $idle = true;
             $catchingUp = false;
             try {
@@ -67,6 +69,8 @@ final class EthereumEarlyScan extends Command
                     }
                 }
                 $this->error('Early Ethereum check did not complete; finalized coverage and durable observations are preserved.');
+                $this->line(json_encode(['failure' => SanitizedFailure::details($error),
+                    'providers' => $attempt?->failures ?? []], JSON_THROW_ON_ERROR));
                 if ($this->option('once')) {
                     return self::FAILURE;
                 }

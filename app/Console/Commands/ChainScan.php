@@ -13,6 +13,7 @@ use App\Monitoring\ScanException;
 use App\Operations\Heartbeat;
 use App\Operations\MaintenanceGuard;
 use App\Operations\MonitoringIncidentService;
+use App\Operations\SanitizedFailure;
 use App\Reconciliation\ResilientScanner;
 use Illuminate\Console\Command;
 use Throwable;
@@ -40,6 +41,7 @@ class ChainScan extends Command
             return self::INVALID;
         }
         do {
+            $attempt = null;
             $idle = true;
             try {
                 $state = $readiness->state($chain);
@@ -75,6 +77,8 @@ class ChainScan extends Command
                 // Upstream exception messages must never expose credential-bearing URLs or raw response bodies.
                 $this->error('Finalized monitoring check did not complete. Inspect sanitized operational status.');
 
+                $this->line(json_encode(['failure' => SanitizedFailure::details($error),
+                    'providers' => $attempt?->failures ?? []], JSON_THROW_ON_ERROR));
                 if ($this->option('once')) {
                     return self::FAILURE;
                 }
