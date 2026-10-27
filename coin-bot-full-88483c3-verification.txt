@@ -1,0 +1,15 @@
+Coin Bot complete security-audit package
+Source: 88483c3d88e8106af5b7c8e5a61e86dae3ba7040
+Application path: /home/www/coinbot
+Archive: coin-bot-full-88483c3.zip; bytes: 8788287; members: 6077
+SHA-256: 6406f28b7f132a206f06733dcf3549f46b37c793e85154a182c1bd6d5cd37342
+Composer and 74 locked production dependencies included; development dependencies excluded.
+Every manifest hash, archive integrity/checksum, private-file exclusion, executable mode and audit component verified.
+Actual full ZIP relocation/platform/autoload/discovery and memory-SQLite migrations (including anonymous-update partial index) passed.
+Actual production ZIP with network disabled passed: real RpcTransport local TLS with trusted certificate/small JSON, oversized headerless response rejection, bad CA rejection and redirect refusal; 16 real loopback HTTP requests without cookies/sessions; 100 ETH + 2 TRON TXT import with repeat-state preservation and atomic sanitized invalid-batch rejection (27 checks).
+Strict full bin/verify: PHP 8.5.12, runtime/SQLite/index checks, Composer validation, 338 tests / 1880 assertions; final Pint passed 126 PHP files. Audit adds91cases.
+Actual installer-manifest validator passed12fixtures and GNUtar literal option-like filename extraction without command side effect. No full native APT install was repeated; installer code is unchanged from previous Bookworm/Trixie validation.
+Online locked Composer audit: no advisories/abandoned packages. Official advisories and normalized patch ranges also reviewed; installed Laravel13.38.0 is beyond relevant13.27.0 fix.
+Read docs/security-audit-2026-10-27.md for findings, coverage, commands and residual limits. Two medium availability issues fixed; health/session and unused file surface hardened; serial backup retention and restore staging cleanup corrected. No confirmed cross-user data/privilege bypass in tested scenarios.
+Update only with all writers stopped and state/key preserved. Clear config AND route caches (optimize:clear), migrate for the new index, then restart full workers. Installer remains first-install only. CLIallow_url_fopen must be On; no INI/FPM/system package changes made automatically.
+Production/public host/live providers/real recipients/off-host recovery were not tested. Authenticated-history retention, backup-writer concurrency, in-flight revocation and ambiguous Telegram duplicate risks remain documented. This is not a complete-security certification.
