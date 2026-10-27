@@ -4,6 +4,8 @@ set -euo pipefail
 usage() {
   cat <<'HELP'
 Usage: sudo coin-bot enroll|start|stop|status|ARTISAN_COMMAND [arguments]
+  backup:local    Select encrypted local backups; requires stopped bot workers.
+  backup:offhost  Restore the required external backup mount policy.
   enroll  Start private enrollment and print one individual activation key.
   start   Start and enable all configured workers after wallet setup.
   stop    Stop every Coin Bot worker.
@@ -20,19 +22,78 @@ fi
 cd /home/www/coinbot
 runtime=(runuser -u coin-bot -- env -i PATH=/usr/bin:/bin HOME=/var/lib/coin-bot)
 artisan() { "${runtime[@]}" /usr/bin/php8.5 /home/www/coinbot/artisan "$@"; }
-check_start() {
-  if ! mountpoint -q /mnt/coin-bot-backups; then
-    echo 'Mount the protected off-host backup destination at /mnt/coin-bot-backups before startup.' >&2
+backup_mode() { "${runtime[@]}" /usr/bin/php8.5 /home/www/coinbot/deploy/native-backup-config.php mode; }
+require_stopped() {
+  local unit_states
+  if ! unit_states="$(systemctl list-units --all --plain --no-legend --no-pager 'coin-bot@*.service' coin-bot.target)"; then
+    echo 'Cannot verify stopped Coin Bot workers; backup settings were not changed.' >&2
     exit 1
   fi
-  if ! "${runtime[@]}" test -w /mnt/coin-bot-backups; then
-    echo 'Allow the coin-bot user to write to the backup mount.' >&2
+  if ! awk 'NF && $3 != "inactive" && $3 != "failed" { exit 1 }' <<<"$unit_states"; then
+    echo 'Stop Coin Bot workers first: sudo coin-bot stop' >&2
+    exit 1
+  fi
+}
+configure_backups() {
+  local mode="$1" drop_in=/etc/systemd/system/coin-bot@.service.d/local-backups.conf
+  local template=/home/www/coinbot/deploy/systemd/coin-bot-local-backups.conf
+  local directory=/etc/systemd/system/coin-bot@.service.d override directory_mode
+  require_stopped
+  if [[ -L /etc/systemd/system/coin-bot@.service.d || -L "$drop_in" ]]; then
+    echo 'Refusing symlinked Coin Bot backup settings.' >&2; exit 1
+  fi
+  if [[ -e "$drop_in" ]] && ! cmp -s -- "$template" "$drop_in"; then
+    echo 'Existing custom local-backup settings were preserved; review them before changing modes.' >&2; exit 1
+  fi
+  if [[ -e "$directory" ]]; then
+    directory_mode="$(stat -c '%a' -- "$directory")"
+    if [[ ! -d "$directory" || "$(stat -c '%u' -- "$directory")" != 0 ]] \
+        || (( (8#$directory_mode & 0022) != 0 )) \
+        || ! "${runtime[@]}" test -x "$directory"; then
+      echo 'Existing Coin Bot override directory permissions were preserved; review them before changing modes.' >&2; exit 1
+    fi
+    for override in "$directory"/*.conf; do
+      [[ -e "$override" || -L "$override" ]] || continue
+      if [[ "$override" != "$drop_in" ]]; then
+        echo 'Existing custom Coin Bot overrides were preserved; review them before changing backup modes.' >&2; exit 1
+      fi
+    done
+  fi
+  if [[ "$mode" == local ]]; then
+    if [[ -L /var/lib/coin-bot || -L /var/lib/coin-bot/backups ]]; then
+      echo 'Refusing a symlinked local backup directory.' >&2; exit 1
+    fi
+    install -d -o coin-bot -g coin-bot -m 0700 /var/lib/coin-bot/backups
+    if [[ ! -d "$directory" ]]; then install -d -o root -g root -m 0755 "$directory"; fi
+    install -o root -g root -m 0644 "$template" "$drop_in"
+    /usr/bin/php8.5 /home/www/coinbot/deploy/native-backup-config.php local
+    artisan config:clear
+    systemctl daemon-reload
+    echo 'Encrypted local backups selected: /var/lib/coin-bot/backups. No mount is required.'
+    echo 'A lost server or disk can also lose these local copies. Run sudo coin-bot enroll or start when ready.'
+  else
+    # Restore manager-side mount assertions before selecting off-host config.
+    rm -f -- "$drop_in"
+    systemctl daemon-reload
+    /usr/bin/php8.5 /home/www/coinbot/deploy/native-backup-config.php offhost
+    artisan config:clear
+    echo 'Off-host backups selected. Mount the protected destination at /mnt/coin-bot-backups before startup.'
+  fi
+}
+check_start() {
+  if [[ "$(backup_mode)" == offhost ]] && ! mountpoint -q /mnt/coin-bot-backups; then
+    echo 'Mount the protected off-host backup destination at /mnt/coin-bot-backups before startup.' >&2
+    echo 'For encrypted local backups without a mount, run sudo coin-bot backup:local.' >&2
     exit 1
   fi
   "${runtime[@]}" /usr/bin/php8.5 /home/www/coinbot/deploy/native-preflight.php "$1"
 }
 
 case "$1" in
+  backup:local|backup:offhost)
+    if [[ $# != 1 ]]; then usage >&2; exit 64; fi
+    configure_backups "${1#backup:}"
+    ;;
   enroll)
     if [[ $# != 1 ]]; then usage >&2; exit 64; fi
     check_start enroll

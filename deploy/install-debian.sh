@@ -224,7 +224,8 @@ Installed Coin Bot in /home/www/coinbot. No workers or web services were started
 Next:
   1. Edit /home/www/coinbot/.env with the bot token, provider URLs, and allowed IDs.
   2. Preserve .env (including APP_KEY) securely off-host, separately from backups.
-  3. Mount the protected off-host backup destination at /mnt/coin-bot-backups.
+  3. Run sudo coin-bot backup:local for encrypted local copies without a mount,
+     or mount the protected off-host destination at /mnt/coin-bot-backups.
   4. Run: sudo coin-bot enroll
 
 The full ZIP already includes production dependencies and Composer.

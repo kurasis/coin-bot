@@ -68,6 +68,7 @@ Set these values in `.env`; keep credentials in this private file:
 APP_ENV=production
 APP_DEBUG=false
 DB_DATABASE=/var/lib/coin-bot/database.sqlite
+OPERATIONS_BACKUP_MODE=offhost
 OPERATIONS_BACKUP_DIRECTORY=/mnt/coin-bot-backups
 OPERATIONS_REQUIRED_WORKERS=scan-ethereum,scan-tron,telegram-poll,telegram-deliver,backfill,backups,reconcile-ethereum,reconcile-tron
 ```
@@ -76,7 +77,9 @@ Supply `TELEGRAM_BOT_TOKEN`, both Ethereum RPC URLs, both TRON RPC/native URLs, 
 
 For access limited to known Telegram IDs, set `TELEGRAM_ALLOWED_USER_IDS` to their comma-separated numeric IDs before enrollment. They still need individual keys. Blank keeps invitation by key; strangers and invalid-key attempts receive no reply in either mode. In BotFather, use `/setjoingroups` → **Disable** to prevent adding the bot to groups.
 
-Mount a protected, writable, independently retained **off-host backup destination** at `/mnt/coin-bot-backups` and configure its persistent mount before continuing. A normal local directory is insufficient. Allow the `coin-bot` user to write there. The service refuses startup if this path is not a mount point; mount presence alone does not prove remote persistence.
+This manual sequence uses the default `offhost` policy. For simpler startup with encrypted local backups and no external mount, use the [complete-package guide](deploy-debian.md) and its explicit `sudo coin-bot backup:local` mode instead. Local copies can be lost with the database if the server or disk fails; encrypted backups and freshness checks remain required.
+
+For this offhost sequence, mount a protected, writable, independently retained **off-host backup destination** at `/mnt/coin-bot-backups` and configure its persistent mount before continuing. A normal local directory does not satisfy offhost mode. Allow the `coin-bot` user to write there. The service refuses offhost startup if this path is not a mount point; mount presence alone does not prove remote persistence.
 
 ```bash
 cb() { sudo -u coin-bot /usr/bin/php8.5 /home/www/coinbot/artisan "$@"; }

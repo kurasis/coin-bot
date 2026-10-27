@@ -26,6 +26,8 @@ For an existing web server, use `sudo bash deploy/install-debian.sh --no-package
 
 The build machine can verify the full package with `bin/verify-native-install ARCHIVE debian:bookworm-slim` or `debian:trixie-slim`. These disposable native-install checks require Docker only on the build/test machine and start no application workers.
 
+Native operators can select encrypted local copies without a mount using `sudo coin-bot backup:local`; off-host storage remains the default. Existing installations can apply the verified [backup-mode update](docs/deploy-debian.md) without reinstalling or replacing private configuration/data. Developers can run `bin/verify-native-backups` to exercise the update and both policies in a network-free disposable container.
+
 Repository documentation and code use English.
 
 ## Local development

@@ -11,7 +11,7 @@ Copy `.env.example` through `bin/setup` and supply any future credentials throug
 | `config/blockchain.php` | Independent RPC URLs/native TRON URLs, authentication, per-provider timeouts/limits/retries, verified historical coverage |
 | `config/telegram.php` | Bot credential binding, optional future staging ID, polling/request/lease timing, rate and attempt limits |
 | `config/reconciliation.php` | Persistent circuit cooldowns, repeat-scan interval, and per-chain overlap windows |
-| `config/operations.php` | Backup/state locations, retention, lag/health thresholds, and required workers |
+| `config/operations.php` | Backup mode/state locations, retention, lag/health thresholds, and required workers |
 | `deploy/compose.yaml` | Optional future process supervision and local persistent volumes; not automatically launched |
 | `deploy/systemd/` | Native Debian worker supervision, fixed worker commands, and restricted writable paths |
 | `deploy/nginx/`, `deploy/php-fpm/` | Optional Telegram-source-only HTTPS website and private application FPM pool |
@@ -75,7 +75,25 @@ Telegram usernames remain discoverable; this policy controls application replies
 
 For optional future Compose deployment, set `COIN_BOT_BACKUP_PATH` to a protected verified off-host backup mount and choose `COIN_BOT_UID/GID`. Keep `APP_KEY` separately and securely backed up; a proxy placeholder cannot replace a raw local encryption key. Production settings are not needed to run offline tests. See [operations](operations.md) for enrollment bootstrap, supervision, health, and fenced restore.
 
-For native deployment, use the [Debian 12/13 guide](deploy-debian.md): the full ZIP includes Composer and locked production dependencies, and its first-install script prepares PHP, the private configuration, SQLite, and systemd without launching workers. Code and the private `.env` live at `/home/www/coinbot`; the database is `/var/lib/coin-bot/database.sqlite`, and encrypted backups use `/mnt/coin-bot-backups`. The worker namespace exposes only this application below its otherwise hidden `/home`. Container-specific `COIN_BOT_UID/GID/BACKUP_PATH` settings are unused. Optional web access uses Nginx source-IP rules; it does not introduce Telegram webhooks.
+For native deployment, use the [Debian 12/13 guide](deploy-debian.md): the full ZIP includes Composer and locked production dependencies, and its first-install script prepares PHP, the private configuration, SQLite, and systemd without launching workers. Code and the private `.env` live at `/home/www/coinbot`; the database is `/var/lib/coin-bot/database.sqlite`. The worker namespace exposes only this application below its otherwise hidden `/home`. Container-specific `COIN_BOT_UID/GID/BACKUP_PATH` settings are unused. Optional web access uses Nginx source-IP rules; it does not introduce Telegram webhooks.
+
+### Native backup storage
+
+`OPERATIONS_BACKUP_MODE` selects the native startup policy; the default is `offhost`. Select the mode through the root helper with all Coin Bot workers stopped, so configuration and systemd restrictions agree:
+
+```bash
+sudo coin-bot stop
+sudo coin-bot backup:local
+```
+
+| Mode | Encrypted artifact directory | Startup requirement |
+| --- | --- | --- |
+| `offhost` | `/mnt/coin-bot-backups` | Protected writable external mount; the default and recommended choice for host-loss recovery |
+| `local` | `/var/lib/coin-bot/backups` | Private writable local directory; no external mount needed |
+
+`backup:local` sets the matching mode/directory while preserving `APP_KEY` and other settings. Automatic encrypted backups and `OPERATIONS_REQUIRE_BACKUP=true` remain enabled, including freshness checks. `sudo coin-bot backup:offhost` restores the offhost policy; verify the external mount before starting workers. Changing only `.env` is insufficient when systemd still has the restrictions for another mode.
+
+Local backups can be lost with the database if the server or disk fails. Preserve configuration/key material separately and add offhost storage when recovery from host loss is required. Older native installations need the narrow `deploy/update-native-backups.sh` update from a new full ZIP before these helper commands are available; see the deployment guide. The first-install script must not be rerun over an existing installation.
 
 On shared web hosts, the installer's `--no-packages` option requires an existing PHP 8.5 CLI runtime and performs no APT/dpkg/repository changes. Automatic package provisioning is also blocked when common existing web-stack files/packages are detected. Existing Nginx/FPM configuration, PHP INI files, and CLI alternatives are not rewritten by the runtime-reuse installation path.
 

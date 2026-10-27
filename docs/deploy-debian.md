@@ -28,7 +28,25 @@ Fill in your Telegram bot token, allowed numeric Telegram user IDs, and the Ethe
 
 Use your one QuickNode endpoint for Ethereum. For TRON, use TronGrid plus a separate [Chainstack TRON Mainnet node](https://console.chainstack.com/). Copy **JSON-RPC API** into `TRON_SECONDARY_RPC_URL`; copy **HTTP API** into `TRON_SECONDARY_NATIVE_URL`, removing a final `/wallet` or `/wallet/` if present. Leave `TRON_SECONDARY_API_KEY` blank. See [the exact settings](configuration.md#one-quicknode-endpoint).
 
-Connect a protected, writable off-host backup mount at `/mnt/coin-bot-backups`, with write access for the `coin-bot` user. This depends on your backup provider; an ordinary local folder does not replace it. Installation completes before this mount exists, but startup requires it.
+Choose backup storage before enrollment. To start without mounting external storage, explicitly enable encrypted local backups:
+
+```bash
+sudo coin-bot backup:local
+```
+
+This uses `/var/lib/coin-bot/backups`, keeps automatic encrypted backups and freshness checks enabled, and needs no mount. Local copies can be lost together with the database if the server or its disk fails.
+
+For protection against host loss, use the default `offhost` mode: connect a protected, writable external backup mount at `/mnt/coin-bot-backups`, with write access for `coin-bot`. This depends on your backup provider; a normal local directory does not satisfy offhost mode. To switch back later, stop workers, run `sudo coin-bot backup:offhost`, and verify the mount before enrollment/startup. Both mode commands require stopped Coin Bot workers (`sudo coin-bot stop`).
+
+For an existing installation that reports `Mount the protected off-host backup destination...`, extract the **new** full ZIP into a separate directory. From its `coin-bot` directory, apply only the backup-mode support update:
+
+```bash
+sudo coin-bot stop
+sudo bash deploy/update-native-backups.sh
+sudo coin-bot backup:local
+```
+
+Then continue with `enroll` below. The narrow updater preserves `.env`, `APP_KEY`, SQLite, and existing application data. Do not rerun the first-install script or extract the ZIP over the installed application.
 
 ## 2. Activate your Telegram user
 
@@ -57,7 +75,7 @@ sudo install -o coin-bot -g coin-bot -m 0600 wallets-tron.txt /home/www/coinbot/
 sudo coin-bot wallet:import /home/www/coinbot/storage/app/wallets-tron.txt --chain=tron --user=USER_ID
 ```
 
-Use `--chain=ethereum` for an Ethereum list. Up to 100 address lines are accepted per command; one invalid record rejects the entire batch, and repeat imports preserve existing settings. See [bulk text import](wallet-import.md) for all options and CSV/JSON compatibility. Initial backup/reconciliation work must finish before health is complete. Keep independent monitoring and verify off-host recovery before relying on delivery.
+Use `--chain=ethereum` for an Ethereum list. Up to 100 address lines are accepted per command; one invalid record rejects the entire batch, and repeat imports preserve existing settings. See [bulk text import](wallet-import.md) for all options and CSV/JSON compatibility. Initial backup/reconciliation work must finish before health is complete. Keep independent monitoring; local backup health does not establish recovery after host loss.
 
 ## Stop, configure, or update
 

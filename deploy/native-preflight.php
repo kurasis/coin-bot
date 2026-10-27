@@ -1,6 +1,7 @@
 <?php
 
 use App\Operations\MaintenanceGuard;
+use App\Operations\NativeBackupPolicy;
 use App\Telegram\TelegramAudience;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\DB;
@@ -10,6 +11,15 @@ try {
     $app = require dirname(__DIR__).'/bootstrap/app.php';
     $app->make(Kernel::class)->bootstrap();
     $mode = $argv[1] ?? '';
+    try {
+        app(NativeBackupPolicy::class)->validate();
+    } catch (RuntimeException $exception) {
+        fwrite(STDERR, $exception->getMessage().PHP_EOL);
+        exit(1);
+    }
+    if ($mode === 'worker') {
+        exit(0);
+    }
     $issues = [];
     if (! in_array($mode, ['enroll', 'start'], true)) {
         $issues[] = 'Use enroll or start.';
@@ -18,9 +28,6 @@ try {
         || config('database.connections.sqlite.database') !== '/var/lib/coin-bot/database.sqlite'
         || config('database.connections.sqlite.url') !== null) {
         $issues[] = 'Keep the native SQLite database at /var/lib/coin-bot/database.sqlite with DB_URL unset.';
-    }
-    if (config('operations.backup_directory') !== '/mnt/coin-bot-backups') {
-        $issues[] = 'Set OPERATIONS_BACKUP_DIRECTORY=/mnt/coin-bot-backups.';
     }
     if (! is_string(config('app.key')) || config('app.key') === '') {
         $issues[] = 'The installation application key is missing; preserve the original key.';

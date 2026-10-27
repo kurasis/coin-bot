@@ -1,0 +1,385 @@
+#!/usr/bin/env python3
+"""Exercise native backup-mode changes in a disposable, network-free container.
+
+No host configuration, keys, database, or application runtime state is mounted.
+Only exported repository source and read-only installed dependencies are used.
+"""
+
+from pathlib import Path
+import io
+import os
+import shutil
+import stat
+import subprocess
+import sys
+import tarfile
+import tempfile
+from zipfile import BadZipFile, ZipFile
+
+
+BASELINE = "88483c3d88e8106af5b7c8e5a61e86dae3ba7040"
+
+CANDIDATE_COMPONENTS = {
+    "app/Operations/NativeBackupPolicy.php",
+    "deploy/native-backup-config.php",
+    "deploy/systemd/coin-bot-local-backups.conf",
+    "config/operations.php",
+    "app/Operations/HealthReport.php",
+    "deploy/native-preflight.php",
+    "deploy/systemd/worker",
+    "deploy/coin-bot",
+    "deploy/update-native-backups.sh",
+    "release-manifest.json",
+}
+
+CONTAINER = r"""set -euo pipefail
+umask 0077
+stage=initialization
+trap 'printf "Native backup probe failed during %s; no services were started.\n" "$stage" >&2' ERR
+
+test "$(id -u)" = 0
+test ! -e /home/www/coinbot
+test ! -e /var/lib/coin-bot
+ln -s /usr/local/bin/php /usr/bin/php8.5
+useradd --system --user-group --home-dir /var/lib/coin-bot --shell /usr/sbin/nologin coin-bot
+install -d -o root -g root -m 0755 /home/www /home/www/coinbot /etc/systemd/system
+cp -a /fixtures/baseline/. /home/www/coinbot/
+cp -a /runtime/vendor /home/www/coinbot/vendor
+install -d -o root -g root -m 0755 /home/www/coinbot/tools
+cp /usr/local/bin/composer /home/www/coinbot/tools/composer.phar
+install -d -o coin-bot -g coin-bot -m 0700 /var/lib/coin-bot
+chown -R root:root /home/www/coinbot
+chmod -R u=rwX,go=rX /home/www/coinbot
+chown -R coin-bot:coin-bot /home/www/coinbot/storage /home/www/coinbot/bootstrap/cache
+chmod -R u=rwX,go= /home/www/coinbot/storage /home/www/coinbot/bootstrap/cache
+install -o coin-bot -g coin-bot -m 0600 /home/www/coinbot/.env.example /home/www/coinbot/.env
+install -m 0755 /home/www/coinbot/deploy/coin-bot /usr/local/sbin/coin-bot
+install -m 0644 /home/www/coinbot/deploy/systemd/coin-bot@.service /home/www/coinbot/deploy/systemd/coin-bot.target /etc/systemd/system/
+
+cat > /usr/local/bin/systemctl <<'SYSTEMCTL'
+#!/bin/sh
+printf '%s\n' "$*" >> /tmp/coin-bot-systemctl-calls
+case "$1" in
+  is-active) test -f /tmp/coin-bot-active && exit 0; exit 3 ;;
+  list-units)
+    test ! -f /tmp/coin-bot-manager-error || exit 1
+    if test -f /tmp/coin-bot-active; then
+      state="$(cat /tmp/coin-bot-active)"
+      printf 'coin-bot@backups.service loaded %s running\n' "${state:-active}"
+    fi
+    exit 0 ;;
+  show) if test -f /tmp/coin-bot-active; then printf 'active\n'; else printf 'inactive\n'; fi; exit 0 ;;
+  daemon-reload) exit 0 ;;
+  start|stop|enable|disable|reset-failed)
+    case "$*" in *nginx*|*fpm*|*apache*) touch /tmp/coin-bot-forbidden-operation; exit 99 ;; esac
+    exit 0 ;;
+  *) printf 'Unexpected systemctl command.\n' >&2; exit 99 ;;
+esac
+SYSTEMCTL
+chmod 0755 /usr/local/bin/systemctl
+ln -s /usr/local/bin/systemctl /usr/bin/systemctl
+for program in apt-get apt dpkg nginx php-fpm8.5 update-alternatives; do
+  cat > "/usr/local/bin/$program" <<'FORBIDDEN'
+#!/bin/sh
+touch /tmp/coin-bot-forbidden-operation
+exit 99
+FORBIDDEN
+  chmod 0755 "/usr/local/bin/$program"
+  ln -sf "/usr/local/bin/$program" "/usr/bin/$program"
+done
+install -d -m 0755 /etc/nginx/sites-enabled /etc/php/8.5/fpm/pool.d /etc/php/8.5/cli
+printf 'Existing nginx site fixture.\n' > /etc/nginx/sites-enabled/preserve
+printf 'Existing PHP-FPM fixture.\n' > /etc/php/8.5/fpm/pool.d/preserve.conf
+printf 'Existing CLI INI fixture.\n' > /etc/php/8.5/cli/preserve.ini
+printf 'Unrelated application file.\n' > /home/www/coinbot/preserve-local.txt
+site_hashes="$(sha256sum /etc/nginx/sites-enabled/preserve /etc/php/8.5/fpm/pool.d/preserve.conf /etc/php/8.5/cli/preserve.ini /home/www/coinbot/preserve-local.txt)"
+app_run() { runuser -u coin-bot -- env -i PATH=/usr/local/bin:/usr/bin:/bin HOME=/var/lib/coin-bot "$@"; }
+
+cat > /tmp/coin-bot-fixture-config.php <<'PHP'
+<?php
+$path='/home/www/coinbot/.env';
+$contents=file_get_contents($path);
+$values=[
+ 'APP_ENV'=>'production','APP_DEBUG'=>'false','APP_KEY'=>'base64:'.base64_encode(random_bytes(32)),
+ 'DB_DATABASE'=>'/var/lib/coin-bot/database.sqlite','OPERATIONS_BACKUP_DIRECTORY'=>'/mnt/coin-bot-backups',
+ 'OPERATIONS_REQUIRE_BACKUP'=>'true','OPERATIONS_REQUIRED_WORKERS'=>'',
+ 'TELEGRAM_BOT_TOKEN'=>'synthetic-native-backup-token','TELEGRAM_ALLOWED_USER_IDS'=>'990000001',
+ 'ETHEREUM_PRIMARY_RPC_URL'=>'https://primary.invalid','ETHEREUM_SECONDARY_RPC_URL'=>'https://secondary.invalid',
+ 'TRON_PRIMARY_RPC_URL'=>'https://tron-primary.invalid/jsonrpc','TRON_PRIMARY_NATIVE_URL'=>'https://tron-primary.invalid',
+ 'TRON_SECONDARY_RPC_URL'=>'https://tron-secondary.invalid/jsonrpc','TRON_SECONDARY_NATIVE_URL'=>'https://tron-secondary.invalid',
+];
+foreach($values as $name=>$value) {
+ $contents=preg_replace('/^'.preg_quote($name,'/').'=.*$/m',$name.'='.$value,$contents,count:$count);
+ if($count===0) {$contents.="\n".$name.'='.$value;}
+}
+file_put_contents($path,$contents."\nUSER_CONFIG_SENTINEL=preserve-me\n");
+PHP
+chmod 0644 /tmp/coin-bot-fixture-config.php
+app_run /usr/bin/php8.5 /tmp/coin-bot-fixture-config.php
+cd /home/www/coinbot
+app_run /usr/bin/php8.5 artisan migrate --force --no-interaction >/tmp/coin-bot-migrate.log 2>&1
+app_run /usr/bin/php8.5 -r 'require "vendor/autoload.php"; $app=require "bootstrap/app.php"; $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap(); Illuminate\Support\Facades\DB::statement("CREATE TABLE backup_probe_sentinel (value TEXT NOT NULL)"); Illuminate\Support\Facades\DB::table("backup_probe_sentinel")->insert(["value"=>"preserved synthetic data"]);'
+app_run /usr/bin/php8.5 artisan config:cache >/tmp/coin-bot-cache.log 2>&1
+env_hash="$(sha256sum .env | cut -d ' ' -f 1)"
+key_hash="$(sed -n '/^APP_KEY=/p' .env | sha256sum | cut -d ' ' -f 1)"
+db_hash="$(sha256sum /var/lib/coin-bot/database.sqlite | cut -d ' ' -f 1)"
+unit_hash="$(sha256sum /etc/systemd/system/coin-bot@.service | cut -d ' ' -f 1)"
+
+stage=baseline-mount-gate
+if /usr/local/sbin/coin-bot enroll >/tmp/coin-bot-enroll.log 2>&1; then exit 1; fi
+grep -q 'Mount the protected' /tmp/coin-bot-enroll.log
+mkdir -p /mnt/coin-bot-backups
+if /usr/local/sbin/coin-bot enroll >/tmp/coin-bot-enroll.log 2>&1; then exit 1; fi
+grep -q 'Mount the protected' /tmp/coin-bot-enroll.log
+printf 'PASS: baseline rejects absent mounts and ordinary local folders.\n'
+
+stage=prepare-candidate
+cp -a /fixtures/candidate /tmp/coin-bot-candidate
+if [[ -f /fixtures/candidate/release-manifest.json ]]; then
+  test "$(sha256sum /fixtures/candidate/release-manifest.json | cut -d ' ' -f 1)" = "$(sha256sum /tmp/coin-bot-candidate/release-manifest.json | cut -d ' ' -f 1)"
+else
+  install -d -m 0755 /tmp/coin-bot-candidate/tools
+  cp /usr/local/bin/composer /tmp/coin-bot-candidate/tools/composer.phar
+  cp -a /runtime/vendor /tmp/coin-bot-candidate/vendor
+  php -r '$root="/tmp/coin-bot-candidate"; $files=[]; $iterator=new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root,FilesystemIterator::SKIP_DOTS)); foreach($iterator as $file) {if($file->isFile()) {$name=substr($file->getPathname(),strlen($root)+1); $files[$name]=hash_file("sha256",$file->getPathname());}} file_put_contents($root."/release-manifest.json",json_encode(["format"=>1,"git_commit"=>str_repeat("a",40),"source_date_epoch"=>0,"files"=>$files],JSON_PRETTY_PRINT)."\n");'
+fi
+
+stage=active-update-refusal
+for state in active activating deactivating; do
+  printf '%s\n' "$state" > /tmp/coin-bot-active
+  if bash /tmp/coin-bot-candidate/deploy/update-native-backups.sh >/tmp/coin-bot-update.log 2>&1; then exit 1; fi
+  test "$env_hash" = "$(sha256sum .env | cut -d ' ' -f 1)"
+  test "$db_hash" = "$(sha256sum /var/lib/coin-bot/database.sqlite | cut -d ' ' -f 1)"
+done
+rm /tmp/coin-bot-active
+stage=existing-install-update
+bash /tmp/coin-bot-candidate/deploy/update-native-backups.sh >/tmp/coin-bot-update.log 2>&1
+test "$env_hash" = "$(sha256sum .env | cut -d ' ' -f 1)"
+test "$db_hash" = "$(sha256sum /var/lib/coin-bot/database.sqlite | cut -d ' ' -f 1)"
+test "$unit_hash" = "$(sha256sum /etc/systemd/system/coin-bot@.service | cut -d ' ' -f 1)"
+test "$site_hashes" = "$(sha256sum /etc/nginx/sites-enabled/preserve /etc/php/8.5/fpm/pool.d/preserve.conf /etc/php/8.5/cli/preserve.ini /home/www/coinbot/preserve-local.txt)"
+test "$(stat -c '%U:%G:%a' .env)" = coin-bot:coin-bot:600
+test ! -e /tmp/coin-bot-forbidden-operation
+printf 'PASS: narrow update preserves configuration, APP_KEY, SQLite, base unit and existing sites.\n'
+
+stage=local-mode
+/usr/local/sbin/coin-bot backup:local >/tmp/coin-bot-mode.log 2>&1
+test -d /var/lib/coin-bot/backups
+test "$(stat -c '%U:%G:%a' /var/lib/coin-bot/backups)" = coin-bot:coin-bot:700
+test -f /etc/systemd/system/coin-bot@.service.d/local-backups.conf
+test "$(stat -c '%U:%G:%a' /etc/systemd/system/coin-bot@.service.d/local-backups.conf)" = root:root:644
+test ! -f bootstrap/cache/config.php
+grep -q '^OPERATIONS_BACKUP_MODE=local$' .env
+grep -q '^OPERATIONS_BACKUP_DIRECTORY=/var/lib/coin-bot/backups$' .env
+grep -q '^OPERATIONS_REQUIRE_BACKUP=true$' .env
+grep -q '^USER_CONFIG_SENTINEL=preserve-me$' .env
+test "$key_hash" = "$(sed -n '/^APP_KEY=/p' .env | sha256sum | cut -d ' ' -f 1)"
+app_run /usr/bin/php8.5 deploy/native-preflight.php worker >/tmp/coin-bot-preflight.log 2>&1
+mode_hash="$(sha256sum .env | cut -d ' ' -f 1)"
+dropin_hash="$(sha256sum /etc/systemd/system/coin-bot@.service.d/local-backups.conf | cut -d ' ' -f 1)"
+for state in active activating deactivating reloading; do
+  printf '%s\n' "$state" > /tmp/coin-bot-active
+  if /usr/local/sbin/coin-bot backup:offhost >/tmp/coin-bot-mode.log 2>&1; then exit 1; fi
+  test "$mode_hash" = "$(sha256sum .env | cut -d ' ' -f 1)"
+  test "$dropin_hash" = "$(sha256sum /etc/systemd/system/coin-bot@.service.d/local-backups.conf | cut -d ' ' -f 1)"
+done
+rm /tmp/coin-bot-active
+touch /tmp/coin-bot-manager-error
+if /usr/local/sbin/coin-bot backup:offhost >/tmp/coin-bot-mode.log 2>&1; then exit 1; fi
+test "$mode_hash" = "$(sha256sum .env | cut -d ' ' -f 1)"
+test "$dropin_hash" = "$(sha256sum /etc/systemd/system/coin-bot@.service.d/local-backups.conf | cut -d ' ' -f 1)"
+rm /tmp/coin-bot-manager-error
+printf 'failed\n' > /tmp/coin-bot-active
+/usr/local/sbin/coin-bot backup:local >/tmp/coin-bot-mode.log 2>&1
+rm /tmp/coin-bot-active
+chmod 0755 /var/lib/coin-bot/backups
+if app_run /usr/bin/php8.5 deploy/native-preflight.php worker >/tmp/coin-bot-preflight.log 2>&1; then exit 1; fi
+grep -q 'Keep local backup directory permissions private' /tmp/coin-bot-preflight.log
+/usr/local/sbin/coin-bot backup:local >/tmp/coin-bot-mode.log 2>&1
+test "$(stat -c '%U:%G:%a' /var/lib/coin-bot/backups)" = coin-bot:coin-bot:700
+app_run /usr/bin/php8.5 deploy/native-preflight.php worker >/tmp/coin-bot-preflight.log 2>&1
+chmod 0700 /etc/systemd/system/coin-bot@.service.d
+if /usr/local/sbin/coin-bot backup:local >/tmp/coin-bot-mode.log 2>&1; then exit 1; fi
+test "$(stat -c '%U:%G:%a' /etc/systemd/system/coin-bot@.service.d)" = root:root:700
+test "$mode_hash" = "$(sha256sum .env | cut -d ' ' -f 1)"
+test "$dropin_hash" = "$(sha256sum /etc/systemd/system/coin-bot@.service.d/local-backups.conf | cut -d ' ' -f 1)"
+chmod 0755 /etc/systemd/system/coin-bot@.service.d
+printf 'Synthetic custom override; preserve it.\n' > /etc/systemd/system/coin-bot@.service.d/custom.conf
+custom_hash="$(sha256sum /etc/systemd/system/coin-bot@.service.d/custom.conf | cut -d ' ' -f 1)"
+if /usr/local/sbin/coin-bot backup:offhost >/tmp/coin-bot-mode.log 2>&1; then exit 1; fi
+test "$custom_hash" = "$(sha256sum /etc/systemd/system/coin-bot@.service.d/custom.conf | cut -d ' ' -f 1)"
+test "$mode_hash" = "$(sha256sum .env | cut -d ' ' -f 1)"
+rm /etc/systemd/system/coin-bot@.service.d/custom.conf
+printf 'PASS: local mode creates private storage/drop-in, clears stale config, and refuses live changes.\n'
+
+stage=local-enrollment
+/usr/local/sbin/coin-bot enroll >/tmp/coin-bot-enroll.log 2>&1
+app_run /usr/bin/php8.5 -r 'require "vendor/autoload.php"; $app=require "bootstrap/app.php"; $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap(); $b=app(App\Operations\BackupService::class)->lastBackup(); if(!is_array($b)||!is_file($b["artifact"])||!str_starts_with($b["artifact"],"/var/lib/coin-bot/backups/")) {throw new RuntimeException("Local backup missing.");} if(file_get_contents($b["artifact"],false,null,0,17)!=="COINBOT-BACKUP-1\n") {throw new RuntimeException("Backup encryption framing mismatch.");} if(Illuminate\Support\Facades\DB::table("backup_probe_sentinel")->value("value")!=="preserved synthetic data") {throw new RuntimeException("Data was replaced.");} if(Illuminate\Support\Facades\DB::table("access_keys")->count()!==1) {throw new RuntimeException("Enrollment did not issue one key.");} if(Illuminate\Support\Facades\DB::table("users")->count()!==0) {throw new RuntimeException("Unexpected recipient.");} $h=app(App\Operations\HealthReport::class)->inspect(); if(($h["metrics"]["backup_mode"]??null)!=="local"||in_array("backup_missing_or_stale",$h["issues"],true)) {throw new RuntimeException("Local backup health mismatch.");}' >/tmp/coin-bot-assertions.log 2>&1
+grep -q 'start coin-bot@telegram-updates coin-bot@telegram-delivery coin-bot@backups' /tmp/coin-bot-systemctl-calls
+printf 'PASS: enrollment creates a real encrypted local backup and one private key; no recipient or worker runs.\n'
+
+stage=idempotent-update
+env_hash="$(sha256sum .env | cut -d ' ' -f 1)"
+db_hash="$(sha256sum /var/lib/coin-bot/database.sqlite | cut -d ' ' -f 1)"
+bash /tmp/coin-bot-candidate/deploy/update-native-backups.sh >/tmp/coin-bot-update.log 2>&1
+test "$env_hash" = "$(sha256sum .env | cut -d ' ' -f 1)"
+test "$db_hash" = "$(sha256sum /var/lib/coin-bot/database.sqlite | cut -d ' ' -f 1)"
+test "$dropin_hash" = "$(sha256sum /etc/systemd/system/coin-bot@.service.d/local-backups.conf | cut -d ' ' -f 1)"
+printf 'PASS: reapplying the verified patch preserves configured local mode and existing data.\n'
+
+stage=policy-mismatch
+cp .env /tmp/coin-bot-local.env
+sed -i -e 's/^OPERATIONS_BACKUP_MODE=local$/OPERATIONS_BACKUP_MODE=offhost/' \
+  -e 's#^OPERATIONS_BACKUP_DIRECTORY=/var/lib/coin-bot/backups$#OPERATIONS_BACKUP_DIRECTORY=/mnt/coin-bot-backups#' .env
+if app_run /usr/bin/php8.5 deploy/native-preflight.php worker >/tmp/coin-bot-preflight.log 2>&1; then exit 1; fi
+grep -q 'Off-host mode conflicts with local systemd settings' /tmp/coin-bot-preflight.log
+if app_run bash deploy/systemd/worker telegram-updates >/tmp/coin-bot-worker.log 2>&1; then exit 1; fi
+grep -q 'Off-host mode conflicts with local systemd settings' /tmp/coin-bot-worker.log
+cp /tmp/coin-bot-local.env .env
+chown coin-bot:coin-bot .env
+chmod 0600 .env
+mv /etc/systemd/system/coin-bot@.service.d/local-backups.conf /tmp/coin-bot-dropin.conf
+if app_run /usr/bin/php8.5 deploy/native-preflight.php worker >/tmp/coin-bot-preflight.log 2>&1; then exit 1; fi
+grep -q 'Local backup mode needs its managed systemd settings' /tmp/coin-bot-preflight.log
+mv /tmp/coin-bot-dropin.conf /etc/systemd/system/coin-bot@.service.d/local-backups.conf
+app_run /usr/bin/php8.5 deploy/native-preflight.php worker >/tmp/coin-bot-preflight.log 2>&1
+sed -i 's#^OPERATIONS_BACKUP_DIRECTORY=/var/lib/coin-bot/backups$#OPERATIONS_BACKUP_DIRECTORY=/tmp/wrong-directory#' .env
+if app_run /usr/bin/php8.5 deploy/native-preflight.php worker >/tmp/coin-bot-preflight.log 2>&1; then exit 1; fi
+grep -q 'configure the backup directory' /tmp/coin-bot-preflight.log
+cp /tmp/coin-bot-local.env .env
+chown coin-bot:coin-bot .env
+chmod 0600 .env
+app_run /usr/bin/php8.5 deploy/native-preflight.php worker >/tmp/coin-bot-preflight.log 2>&1
+printf 'PASS: direct worker startup rejects both mode/drop-in mismatches.\n'
+
+stage=offhost-mode
+/usr/local/sbin/coin-bot backup:offhost >/tmp/coin-bot-mode.log 2>&1
+test ! -e /etc/systemd/system/coin-bot@.service.d/local-backups.conf
+grep -q '^OPERATIONS_BACKUP_MODE=offhost$' .env
+grep -q '^OPERATIONS_BACKUP_DIRECTORY=/mnt/coin-bot-backups$' .env
+if /usr/local/sbin/coin-bot enroll >/tmp/coin-bot-enroll.log 2>&1; then exit 1; fi
+test "$unit_hash" = "$(sha256sum /etc/systemd/system/coin-bot@.service | cut -d ' ' -f 1)"
+test "$site_hashes" = "$(sha256sum /etc/nginx/sites-enabled/preserve /etc/php/8.5/fpm/pool.d/preserve.conf /etc/php/8.5/cli/preserve.ini /home/www/coinbot/preserve-local.txt)"
+test ! -e /tmp/coin-bot-forbidden-operation
+test "$key_hash" = "$(sed -n '/^APP_KEY=/p' .env | sha256sum | cut -d ' ' -f 1)"
+printf 'PASS: offhost mode restores strict mount protection; no web or package operation occurred.\n'
+printf 'Native backup-mode regression probe passed. systemctl was simulated; no real workers or messages started.\n'
+"""
+
+
+def require(condition, message):
+    if not condition:
+        raise RuntimeError(message)
+
+
+def export_candidate_zip(archive_path, candidate):
+    """Validate all members first, then copy only the actual updater components."""
+    with ZipFile(archive_path) as archive:
+        members = archive.infolist()
+        require(len(members) <= 20000, "Candidate ZIP has too many members.")
+        require(sum(member.file_size for member in members) <= 256 * 1024 * 1024,
+                "Candidate ZIP exceeds the bounded unpacked size.")
+        found = {}
+        names = set()
+        for member in members:
+            name = member.filename
+            parts = name.rstrip("/").split("/")
+            require(name not in names, "Candidate ZIP contains duplicate members.")
+            names.add(name)
+            require(not name.startswith("/") and "\\" not in name
+                    and parts[0] == "coin-bot" and all(part not in {"", ".", ".."} for part in parts),
+                    "Candidate ZIP contains an unsafe or unexpected prefix/path.")
+            mode = member.external_attr >> 16
+            require(not stat.S_ISLNK(mode)
+                    and stat.S_IFMT(mode) in {0, stat.S_IFREG, stat.S_IFDIR},
+                    "Candidate ZIP contains a link or special file.")
+            if len(parts) == 1:
+                require(member.is_dir(), "Candidate ZIP root must be a directory.")
+                continue
+            relative = "/".join(parts[1:])
+            if relative in CANDIDATE_COMPONENTS:
+                require(not member.is_dir() and member.file_size <= 16 * 1024 * 1024,
+                        "Candidate ZIP component is not a bounded regular file.")
+                found[relative] = member
+        require(set(found) == CANDIDATE_COMPONENTS,
+                "Candidate ZIP is missing required backup-mode components or its release manifest.")
+        for relative, member in found.items():
+            target = candidate / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with archive.open(member) as contents:
+                data = contents.read(16 * 1024 * 1024 + 1)
+            require(len(data) <= 16 * 1024 * 1024, "Candidate ZIP component exceeds its read budget.")
+            target.write_bytes(data)
+            target.chmod(0o755 if member.external_attr >> 16 & 0o111 else 0o644)
+
+
+def export_sources(repository, baseline, candidate, archive_path=None):
+    archive = subprocess.check_output(["git", "archive", BASELINE], cwd=repository)
+    with tarfile.open(fileobj=io.BytesIO(archive)) as source:
+        for member in source.getmembers():
+            path = Path(member.name)
+            require(not path.is_absolute() and ".." not in path.parts, "Unsafe baseline source path.")
+            require(member.isfile() or member.isdir(), "Unexpected baseline source link.")
+        source.extractall(baseline, filter="data")
+    if archive_path is not None:
+        export_candidate_zip(archive_path, candidate)
+        return
+    paths = subprocess.check_output(
+        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"], cwd=repository
+    ).decode().split("\0")
+    for name in sorted(set(paths)):
+        if not name:
+            continue
+        if name == "release-manifest.json":
+            continue  # Working-tree mode always builds its own synthetic manifest.
+        path = Path(name)
+        require(not path.is_absolute() and ".." not in path.parts, "Unsafe candidate source path.")
+        require(not (path.name.startswith(".env") and path.name != ".env.example"), "Local environment must never enter the probe.")
+        require(path.suffix.lower() not in {".sqlite", ".db", ".key", ".pem", ".cbk"}, "Local state must never enter the probe.")
+        source = repository / path
+        if not source.exists():
+            continue
+        require(source.is_file() and not source.is_symlink(), "Candidate source must be a regular file.")
+        require(source.resolve().is_relative_to(repository), "Candidate source escapes the checkout.")
+        target = candidate / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+
+
+def main():
+    if sys.argv[1:] in [["--help"], ["-h"]]:
+        print("Usage: bin/verify-native-backups [FULL_ZIP]\nWithout a ZIP, exports current nonignored source into synthetic fixtures.\nWith a ZIP, tests its exact updater components and unchanged release manifest.\nRequires Docker, Git history containing 88483c3, and local coin-bot-php:8.5 with installed vendor dependencies.\nTests synthetic native configuration only; no production host or services are used.")
+        return
+    require(len(sys.argv) <= 2 and (len(sys.argv) == 1 or not sys.argv[1].startswith("-")),
+            "Usage: bin/verify-native-backups [FULL_ZIP]")
+    archive_path = Path(sys.argv[1]).expanduser().resolve() if len(sys.argv) == 2 else None
+    require(archive_path is None or archive_path.is_file(), "Candidate full ZIP is missing.")
+    repository = Path(__file__).resolve().parent.parent
+    require(shutil.which("docker") and shutil.which("git"), "Docker and Git are required.")
+    require((repository / "vendor/autoload.php").is_file(), "Run the development setup first.")
+    baseline = subprocess.run(["git", "cat-file", "-e", BASELINE + "^{commit}"],
+                              cwd=repository, capture_output=True, check=False)
+    require(baseline.returncode == 0, "Baseline 88483c3 is missing; fetch repository history before running this developer probe.")
+    environment = dict(os.environ, DOCKER_CONFIG=os.environ.get("DOCKER_CONFIG", "/tmp/coin-bot-docker"))
+    subprocess.run(["docker", "image", "inspect", "coin-bot-php:8.5"], env=environment,
+                   check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    with tempfile.TemporaryDirectory(prefix="coin-bot-native-backups-") as temporary:
+        root = Path(temporary)
+        baseline, candidate = root / "baseline", root / "candidate"
+        baseline.mkdir(); candidate.mkdir()
+        export_sources(repository, baseline, candidate, archive_path)
+        require((candidate / "deploy/update-native-backups.sh").is_file(), "Backup-mode implementation is missing.")
+        subprocess.run([
+            "docker", "run", "--rm", "--init", "--interactive", "--pull=never", "--network", "none",
+            "--volume", f"{root}:/fixtures:ro",
+            "--volume", f"{repository / 'vendor'}:/runtime/vendor:ro",
+            "coin-bot-php:8.5", "bash", "-s",
+        ], env=environment, input=CONTAINER, text=True, check=True)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (RuntimeError, subprocess.CalledProcessError, BadZipFile, OSError) as error:
+        print(f"Native backup probe failed: {error}", file=sys.stderr)
+        raise SystemExit(1)

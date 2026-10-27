@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+/usr/bin/php8.5 /home/www/coinbot/deploy/native-preflight.php worker
+
 case "${1:-}" in
   ethereum) set -- chain:scan ethereum ;;
   tron) set -- chain:scan tron ;;

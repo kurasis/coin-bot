@@ -1,10 +1,12 @@
 # Operations and recovery
 
-This is an implementation/runbook, not evidence that production or off-host storage has been configured. Production launch still requires verified provider accounts, an authorized bot and recipients, a protected off-host backup mount, external monitoring, and measured P12 recovery drills.
+This is an implementation/runbook, not evidence that production or off-host storage has been configured. Production readiness still requires verified provider accounts, an authorized bot and recipients, external monitoring, and measured P12 recovery drills. Native startup can explicitly use local encrypted backups without an external mount; recovery from host loss still requires independently retained offhost copies.
 
 ## Runtime and deployment
 
 For native PHP 8.5/systemd installation, use the [Debian 12/13 guide](deploy-debian.md). The optional container deployment below uses the pinned PHP 8.5 image produced by `bin/build`. Install locked dependencies before either deployment. No Node, Redis, public webhook listener, or public web server is required for the notification workers. Keep `.env` outside source control with mode `0600`; preserve `APP_KEY` in secure operator-managed storage separately from encrypted backups. SQLite storage must be local to one active host. If a website is enabled, apply the [Telegram-only access policy](telegram-only-website.md).
+
+The native default is `OPERATIONS_BACKUP_MODE=offhost` with `/mnt/coin-bot-backups`. For startup without mounting storage, stop Coin Bot workers and run `sudo coin-bot backup:local`; encrypted copies then use `/var/lib/coin-bot/backups`, with required-backup and freshness checks still enabled. `sudo coin-bot backup:offhost` restores the external-mount policy. Both changes require stopped workers and matching helper-managed systemd restrictions. Local copies can be lost with the database if the host or disk fails. The container recipe below continues to use offhost storage.
 
 `deploy/compose.yaml` mounts application files read-only and keeps database, storage, and generated bootstrap cache in local named volumes. Workers run as the configured unprivileged UID/GID. The one-time `prepare` service creates/chowns the persistent directories, then `migrate` applies migrations before worker startup. The checkout must already contain installed `vendor` dependencies and a valid environment file.
 
@@ -27,7 +29,7 @@ Missing cursors or credentials must remain visible rather than inventing a start
 
 Configure `OPERATIONS_REQUIRED_WORKERS` as a comma-separated list for enabled daemons. The compose configuration expects `scan-ethereum`, `scan-tron`, `telegram-poll`, `telegram-deliver`, `backfill`, `backups`, `reconcile-ethereum`, and `reconcile-tron`. A worker records a heartbeat after a successful/idle unit. Watchdog thresholds are configurable; the cursor progress default is 1,200 seconds to avoid treating normal Ethereum finality intervals as scanner failure. Worker-heartbeat default is 120 seconds; backup-age default is 180 seconds. `OPERATIONS_MAX_UNRECONCILED_AGE` defaults to 1,800 seconds: older completed primary ranges without independent reconciliation cause degraded health even when the primary cursor and all worker heartbeats remain fresh. Metrics include the independent watermark and block lag; private historical backfills are excluded. Open provider circuits and unresolved reconciliation conflicts also raise health issues. Review finality stalls and provider disagreement alongside these local measurements.
 
-The backup status reports creation of a local mounted artifact, not proof that an asynchronous remote replication service copied it. Monitor the remote destination separately. Monitor all daemons externally as well as from within containers; an entirely dead host cannot report its own health.
+The backup status reports creation of an encrypted artifact in the selected destination, not proof that an asynchronous remote replication service copied it. Monitor an external destination separately when used. Successful local backup health does not establish recovery after host loss. Monitor all daemons externally as well as from within containers; an entirely dead host cannot report its own health.
 
 ## Consistent authenticated backups
 

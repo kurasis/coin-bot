@@ -1,6 +1,7 @@
 <?php
 
 return [
+    'backup_mode' => env('OPERATIONS_BACKUP_MODE', 'offhost'),
     'state_directory' => env('OPERATIONS_STATE_DIRECTORY', storage_path('app/operations')),
     'backup_directory' => env('OPERATIONS_BACKUP_DIRECTORY', storage_path('app/backups')),
     'backup_retention' => (int) env('OPERATIONS_BACKUP_RETENTION', 1440),

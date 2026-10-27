@@ -19,6 +19,11 @@ class HealthReport
     {
         $issues = [];
         $metrics = [];
+        $mode = config('operations.backup_mode', 'offhost');
+        $metrics['backup_mode'] = in_array($mode, ['local', 'offhost'], true) ? $mode : 'unknown';
+        if ($metrics['backup_mode'] === 'unknown') {
+            $issues[] = 'backup_mode_invalid';
+        }
         if ($this->maintenance->isPaused()) {
             $issues[] = 'operations_paused';
         }
