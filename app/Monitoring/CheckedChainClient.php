@@ -6,6 +6,7 @@ namespace App\Monitoring;
 
 use App\Blockchain\Contracts\ChainClient;
 use App\Blockchain\Exceptions\RpcException;
+use Throwable;
 
 /** Track provider operations, not systemd restarts or circuit-only skips. */
 final class CheckedChainClient implements ChainClient
@@ -24,15 +25,12 @@ final class CheckedChainClient implements ChainClient
 
     public function verifyNetwork(): void
     {
-        $this->attempt->mark();
-        $this->client->verifyNetwork();
+        $this->call('network', fn () => $this->client->verifyNetwork());
     }
 
     public function finalizedBlock(): array
     {
-        $this->attempt->mark();
-
-        return $this->client->finalizedBlock();
+        return $this->call('finalized', fn () => $this->client->finalizedBlock());
     }
 
     public function latestBlock(): array
@@ -40,30 +38,23 @@ final class CheckedChainClient implements ChainClient
         if (! is_callable([$this->client, 'latestBlock'])) {
             throw new RpcException('The Ethereum client does not support a latest-block check.');
         }
-        $this->attempt->mark();
 
-        return $this->client->latestBlock();
+        return $this->call('latest', fn () => $this->client->latestBlock());
     }
 
     public function block(int $number): array
     {
-        $this->attempt->mark();
-
-        return $this->client->block($number);
+        return $this->call('block', fn () => $this->client->block($number));
     }
 
     public function logs(int $from, int $to, array $normalizedWatchedAddresses, string $direction): array
     {
-        $this->attempt->mark();
-
-        return $this->client->logs($from, $to, $normalizedWatchedAddresses, $direction);
+        return $this->call('logs_'.$direction, fn () => $this->client->logs($from, $to, $normalizedWatchedAddresses, $direction));
     }
 
     public function receipt(string $transactionHash): array
     {
-        $this->attempt->mark();
-
-        return $this->client->receipt($transactionHash);
+        return $this->call('receipt', fn () => $this->client->receipt($transactionHash));
     }
 
     public function solidifiedBlockReceipts(int $number): array
@@ -71,8 +62,22 @@ final class CheckedChainClient implements ChainClient
         if (! is_callable([$this->client, 'solidifiedBlockReceipts'])) {
             throw new RpcException('The TRON client does not support native block receipts.');
         }
-        $this->attempt->mark();
 
-        return $this->client->solidifiedBlockReceipts($number);
+        return $this->call('solidified_receipts', fn () => $this->client->solidifiedBlockReceipts($number));
+    }
+
+    private function call(string $operation, callable $request): mixed
+    {
+        $this->attempt->mark();
+        try {
+            $result = $request();
+            // A limit that was resolved by splitting is no longer a failure.
+            unset($this->attempt->failures[$this->provider()]);
+
+            return $result;
+        } catch (Throwable $error) {
+            $this->attempt->failed($this->provider(), $operation, $error);
+            throw $error;
+        }
     }
 }

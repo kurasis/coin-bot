@@ -8,9 +8,11 @@ use App\Operations\Heartbeat;
 use App\Operations\MaintenanceGuard;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class MonitoringCommandsTest extends TestCase
@@ -140,6 +142,77 @@ class MonitoringCommandsTest extends TestCase
         $this->assertDatabaseCount('notification_outbox', 0);
         $this->assertDatabaseCount('monitoring_alerts', 0);
         $this->assertNotNull(app(Heartbeat::class)->lastSeen('scan-ethereum-early'));
+    }
+
+    #[DataProvider('logLimitStatuses')]
+    public function test_http_log_limits_split_all_blocks_and_addresses_before_advancing_coverage(int $status): void
+    {
+        $cursor = $this->initialize();
+        $set = DB::table('scan_cursors')->find($cursor)->watch_set_id;
+        foreach ([1, 2] as $number) {
+            $wallet = DB::table('wallets')->insertGetId(['chain' => 'ethereum', 'address' => '0x'.str_pad((string) $number, 40, '0', STR_PAD_LEFT)]);
+            DB::table('watch_set_wallets')->insert(['watch_set_id' => $set, 'wallet_id' => $wallet]);
+        }
+        $completed = [];
+        $queries = [];
+        Http::fake(function (Request $request) use ($status, &$completed, &$queries) {
+            if ($request['method'] !== 'eth_getLogs') {
+                if ($request['method'] === 'eth_getBlockByNumber') {
+                    $tag = $request['params'][0];
+                    $number = $tag === 'finalized' ? 13 : hexdec(substr($tag, 2));
+
+                    return Http::response(['jsonrpc' => '2.0', 'id' => $request['id'], 'result' => [
+                        'number' => '0x'.dechex($number), 'hash' => '0x'.hash('sha256', 'header-'.$number), 'timestamp' => '0x6553f100',
+                    ]]);
+                }
+
+                return $this->rpc($request);
+            }
+            $filter = $request['params'][0];
+            $topics = $filter['topics'];
+            $addresses = $topics[count($topics) - 1];
+            $queries[] = [count($addresses), $filter['fromBlock'], $filter['toBlock']];
+            if ($filter['fromBlock'] !== $filter['toBlock'] || count($addresses) > 1) {
+                return Http::response(['error' => ['code' => -32602, 'message' => 'SECRET query block range limit; too many topics']], $status);
+            }
+            $completed[] = [$filter['fromBlock'], count($topics) === 2 ? 'outgoing' : 'incoming', $addresses[0]];
+
+            return Http::response(['jsonrpc' => '2.0', 'id' => $request['id'], 'result' => []]);
+        });
+
+        $this->assertSame(0, Artisan::call('chain:scan', ['chain' => 'ethereum', '--once' => true]));
+        $this->assertDatabaseHas('scan_cursors', ['id' => $cursor, 'last_block' => 13]);
+        $this->assertDatabaseHas('scan_ranges', ['cursor_id' => $cursor, 'from_block' => 10, 'to_block' => 13, 'status' => 'completed']);
+        if ($status === 413) {
+            $this->assertSame([1, '0xa', '0xd'], $queries[1]); // Shrink the payload before multiplying block requests.
+        }
+        $this->assertCount(16, $completed); // Four blocks, two addresses, both directions.
+        $this->assertCount(16, array_unique(array_map('serialize', $completed)));
+        $this->assertDatabaseHas('provider_health', ['chain' => 'ethereum', 'provider' => 'primary', 'failure_count' => 0, 'opens_until' => null]);
+        Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), 'secondary-monitoring'));
+        $this->assertStringNotContainsString('SECRET', Artisan::output());
+    }
+
+    public static function logLimitStatuses(): array
+    {
+        return [[400], [413]];
+    }
+
+    public function test_rejected_requests_report_roles_and_operations_without_leaking_errors(): void
+    {
+        $this->initialize();
+        Http::fake(fn () => Http::response(['error' => ['message' => 'SECRET invalid parameter https://upstream.invalid/key']], 400));
+
+        $this->assertSame(1, Artisan::call('chain:scan', ['chain' => 'ethereum', '--once' => true]));
+        $output = Artisan::output();
+        $this->assertStringContainsString('"primary":{"operation":"network","reason":"request_rejected","http_status":400', $output);
+        $this->assertStringContainsString('"secondary":{"operation":"network","reason":"request_rejected","http_status":400', $output);
+        $this->assertStringNotContainsString('SECRET', $output);
+        $this->assertStringNotContainsString('private-rpc-key', $output);
+        $this->assertStringNotContainsString('upstream.invalid', $output);
+        $this->assertDatabaseHas('scan_cursors', ['last_block' => 9]);
+        $this->assertDatabaseCount('scan_ranges', 0);
+        Http::assertSentCount(2);
     }
 
     private function initialize(): int

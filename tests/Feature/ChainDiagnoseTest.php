@@ -86,6 +86,8 @@ class ChainDiagnoseTest extends TestCase
             'forbidden' => [403, 'authentication_or_permission'],
             'quota' => [429, 'rate_limited'],
             'unavailable' => [503, 'upstream_unavailable'],
+            'rejected' => [400, 'request_rejected'],
+            'too-large' => [413, 'request_too_large'],
         ];
     }
 
@@ -150,6 +152,7 @@ class ChainDiagnoseTest extends TestCase
         $this->assertSame(1, $status);
         $this->assertSame('cooldown', $report['providers']['primary']['status']);
         $this->assertSame(3600, $report['providers']['primary']['retry_after_seconds']);
+        $this->assertSame(['http_status' => 429, 'consecutive_failures' => 3], $report['providers']['primary']['last_failure']);
         $this->assertSame($before, $this->snapshot());
         Http::assertNothingSent();
     }

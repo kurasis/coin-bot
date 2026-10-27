@@ -98,7 +98,35 @@ final class RpcTransport
                 if (! $response->successful()) {
                     $status = $response->status();
                     $retryHeader = $response->header('Retry-After');
-                    BoundedJsonResponse::close($response);
+                    // Some gateways use HTTP errors for eth_getLogs query limits.
+                    // Split only log queries, never authentication or arbitrary 400s.
+                    if (($payload['method'] ?? null) === 'eth_getLogs' && $status === 413) {
+                        BoundedJsonResponse::close($response);
+                        $retryAfterSeconds = is_string($retryHeader) ? $this->retryAfterSeconds($retryHeader) : null;
+                        if ($retryAfterSeconds !== null && $retryAfterSeconds > 0) {
+                            // A temporary gateway rejection can require a wait
+                            // before any smaller query is allowed as well.
+                            throw new RpcException('Blockchain HTTP request failed.', true, $status, $retryAfterSeconds);
+                        }
+                        throw new QueryPayloadLimitException;
+                    }
+                    $limited = false;
+                    if (($payload['method'] ?? null) === 'eth_getLogs' && $status === 400) {
+                        try {
+                            $failure = BoundedJsonResponse::decode($response, $maximumBytes, $timeout);
+                            $upstream = is_array($failure) ? ($failure['error'] ?? null) : null;
+                            $limited = is_array($upstream) && $this->queryLimited($upstream['code'] ?? null, $upstream['message'] ?? null);
+                        } catch (JsonException|LengthException|UnexpectedValueException) {
+                            // Malformed/oversized HTTP errors remain HTTP errors.
+                        } finally {
+                            BoundedJsonResponse::close($response);
+                        }
+                    } else {
+                        BoundedJsonResponse::close($response);
+                    }
+                    if ($limited) {
+                        throw new RangeLimitException;
+                    }
                     if (is_string($retryHeader)) {
                         $retryAfterSeconds = $this->retryAfterSeconds($retryHeader);
                     }
@@ -123,7 +151,7 @@ final class RpcTransport
                     if (($body['statusCode'] ?? null) === 429 || (is_string($message) && preg_match('/rate.?limit|frequency limit|too many requests/i', $message))) {
                         throw new RpcException('Blockchain endpoint rate limit exceeded.', true, 429);
                     }
-                    if ($code === -32005 || (is_string($message) && preg_match('/block.?range|too many (?:results|logs)|response size|query returned more|range.*limit/i', $message))) {
+                    if ($this->queryLimited($code, $message)) {
                         throw new RangeLimitException;
                     }
                     throw new RpcException('Blockchain endpoint reported an error.', in_array($code, [-32002, -32603], true));
@@ -150,5 +178,10 @@ final class RpcTransport
         }
 
         throw new RpcException('Blockchain request failed.');
+    }
+
+    private function queryLimited(mixed $code, mixed $message): bool
+    {
+        return $code === -32005 || (is_string($message) && preg_match('/block.?range|too many (?:results|logs)|response size|query returned more|range.*limit|too many (?:addresses|topics)|(?:request|payload|entity) (?:size|too large)/i', $message) === 1);
     }
 }

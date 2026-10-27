@@ -9,6 +9,7 @@ use App\Blockchain\Contracts\ChainClient;
 use App\Blockchain\EthereumRpcClient;
 use App\Blockchain\Exceptions\RangeLimitException;
 use App\Blockchain\Hex;
+use App\Blockchain\QueryPayloadLimitException;
 use App\Operations\MaintenanceGuard;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
@@ -206,6 +207,11 @@ class BlockScanner
         try {
             return $client->logs($from, $to, $addresses, $direction);
         } catch (RangeLimitException $exception) {
+            if ($exception instanceof QueryPayloadLimitException && count($addresses) > 1) {
+                $middle = intdiv(count($addresses), 2);
+
+                return array_merge($this->query($client, $from, $to, array_slice($addresses, 0, $middle), $direction), $this->query($client, $from, $to, array_slice($addresses, $middle), $direction));
+            }
             if ($from < $to) {
                 $middle = $from + intdiv($to - $from, 2);
 

@@ -191,6 +191,50 @@ class BlockchainClientTest extends TestCase
         $this->ethereum(['max_results' => 1])->logs(100, 100, [self::RECIPIENT], 'incoming');
     }
 
+    public function test_unclassified_http_400_log_errors_are_not_mistaken_for_query_limits(): void
+    {
+        foreach ([['error' => ['code' => -32602, 'message' => 'Invalid parameters SECRET']], '<html>SECRET bad request</html>'] as $body) {
+            Http::fake(['*' => Http::response($body, 400)]);
+            try {
+                $this->ethereum()->logs(100, 101, [self::RECIPIENT], 'incoming');
+                $this->fail('Expected an HTTP error.');
+            } catch (RpcException $error) {
+                $this->assertNotInstanceOf(RangeLimitException::class, $error);
+                $this->assertSame(400, $error->httpStatus);
+                $this->assertFalse($error->retryable);
+                $this->assertStringNotContainsString('SECRET', $error->getMessage());
+            }
+        }
+    }
+
+    public function test_http_413_on_network_check_remains_a_provider_error(): void
+    {
+        Http::fake(['*' => Http::response('SECRET payload too large', 413)]);
+        try {
+            $this->ethereum()->verifyNetwork();
+            $this->fail('Expected an HTTP error.');
+        } catch (RpcException $error) {
+            $this->assertNotInstanceOf(RangeLimitException::class, $error);
+            $this->assertSame(413, $error->httpStatus);
+        }
+        Http::assertSentCount(1);
+    }
+
+    public function test_http_413_log_query_with_retry_after_defers_instead_of_splitting_immediately(): void
+    {
+        Http::fake(['*' => Http::response('SECRET temporary rejection', 413, ['Retry-After' => '600'])]);
+        try {
+            $this->ethereum()->logs(100, 101, [self::RECIPIENT], 'incoming');
+            $this->fail('Expected a scheduled retry.');
+        } catch (RpcException $error) {
+            $this->assertNotInstanceOf(RangeLimitException::class, $error);
+            $this->assertSame(413, $error->httpStatus);
+            $this->assertSame(600, $error->retryAfterSeconds);
+            $this->assertTrue($error->retryable);
+        }
+        Http::assertSentCount(1);
+    }
+
     public function test_http_200_rate_limit_body_is_retried(): void
     {
         Http::fakeSequence()->push(['success' => false, 'error' => 'The key exceeds the frequency limit', 'statusCode' => 429])

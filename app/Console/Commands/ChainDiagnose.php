@@ -6,6 +6,7 @@ namespace App\Console\Commands;
 
 use App\Blockchain\ChainClientFactory;
 use App\Blockchain\Exceptions\RpcException;
+use App\Operations\SanitizedFailure;
 use App\Reconciliation\ProviderCircuitBreaker;
 use App\Reconciliation\ProviderCoolingDown;
 use Illuminate\Console\Command;
@@ -68,6 +69,7 @@ class ChainDiagnose extends Command
             'rpc_configured' => is_string($settings['rpc_url'] ?? null) && trim($settings['rpc_url']) !== '',
             'native_configured' => $chain === 'tron' ? is_string($settings['native_url'] ?? null) && trim($settings['native_url']) !== '' : null,
             // This describes the operator's declaration; the diagnostic never certifies retention.
+            'history_start_block' => $minimum === false ? null : $minimum,
             'history_floor' => $floor === null ? 'unknown' : ($minimum === false ? 'invalid' : 'declared'),
             'history_covers_oldest_pending' => $oldest === null ? null : ($minimum !== false && (int) $oldest->from_block >= $minimum),
             'status' => $selected ? 'not_checked' : 'not_selected',
@@ -84,6 +86,11 @@ class ChainDiagnose extends Command
 
             return $report;
         }
+        $state = DB::table('provider_health')->where('chain', $chain)->where('provider', $role)->first();
+        $report['last_failure'] = $state === null ? null : [
+            'http_status' => $state->last_http_status === null ? null : (int) $state->last_http_status,
+            'consecutive_failures' => (int) $state->failure_count,
+        ];
         $phase = 'configuration';
         try {
             $client = $factory->make($chain, $role);
@@ -110,7 +117,7 @@ class ChainDiagnose extends Command
             $report['retry_after_seconds'] = $error->retryAfterSeconds;
         } catch (RpcException $error) {
             $report['status'] = 'error';
-            $report['error'] = ['phase' => $phase, 'reason' => $this->reason($error), 'http_status' => $error->httpStatus, 'retryable' => $error->retryable, 'retry_after_seconds' => $error->retryAfterSeconds];
+            $report['error'] = ['phase' => $phase] + SanitizedFailure::details($error);
         } catch (Throwable) {
             $report['status'] = 'error';
             $report['error'] = ['phase' => $phase, 'reason' => 'diagnostic_failed'];
@@ -152,29 +159,5 @@ class ChainDiagnose extends Command
         }
 
         return 'prerequisites_ready_not_verified';
-    }
-
-    private function reason(RpcException $error): string
-    {
-        if ($error->httpStatus !== null) {
-            return match (true) {
-                in_array($error->httpStatus, [401, 403], true) => 'authentication_or_permission',
-                $error->httpStatus === 429 => 'rate_limited',
-                $error->httpStatus === 408 || $error->httpStatus >= 500 => 'upstream_unavailable',
-                default => 'http_error',
-            };
-        }
-
-        // Only fixed application messages are matched; arbitrary upstream text is never printed.
-        return match ($error->getMessage()) {
-            'Blockchain endpoint is not Ethereum mainnet.', 'Blockchain endpoint is not TRON mainnet.' => 'wrong_network',
-            'A valid HTTPS blockchain endpoint is required.' => 'invalid_endpoint_configuration',
-            'Blockchain requests require PHP CLI URL streaming.' => 'php_url_streaming_disabled',
-            'Configured blockchain TLS CA bundle is not readable.' => 'tls_ca_bundle_unreadable',
-            'Blockchain connection failed.' => 'connection_failed',
-            'Block is not available.', 'Solidified block is not available.' => 'head_not_available',
-            'Blockchain endpoint reported an error.' => 'rpc_error',
-            default => 'invalid_response',
-        };
     }
 }
