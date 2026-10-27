@@ -1,0 +1,28 @@
+Coin Bot reconciliation catch-up package verification
+Source: d2e2e21e9e4c2df6e51e87f92e6617f57e138f11 (main, PR #2 merged)
+Archive: coin-bot-full-d2e2e21.zip
+Bytes: 8896084
+SHA-256: d169a143185b3c4097d789fec253c635e0079485dacca5cf99a2fdb84c7a2f91
+
+PASS: bin/verify, PHP 8.5.12, strict Composer/runtime/Git checks, Pint152, 464 tests / 2662 assertions, warnings/risky/deprecations fail.
+PASS: 25-range Ethereum/TRON batch regressions: four total network/head calls; all 25 primary boundaries, 49 secondary boundary/watermark calls and 50 direction queries preserved; single transfer/outbox record remains deduplicated.
+PASS: fresh head snapshots between batches, per-range commits and progress callbacks, later-range conflicts, coverage gaps, history/finality waits, Retry-After/cooldown, operator pause between units, native TRON receipt fallback, one-range --once semantics, invalid batch rejection.
+PASS: complete release from merged committed source; 74 locked production dependencies plus Composer; fresh relocation platform checks, application boot and memory-SQLite migrations.
+PASS: ZIP CRC integrity, every release-manifest file hash, exact 6110-member list, private-env exclusion and production-only vendor metadata.
+PASS: native monitoring upgrade regression against actual full ZIP (output below).
+
+Limits: no live production services/providers/Telegram recipients were accessed. Native systemctl is simulated. Synthetic request-count reduction does not establish live catch-up speed or future provider quota availability. No database schema/worker-count change. Existing verified history floors, provider credentials, coverage, queues and backup mode are preserved by the compatible updater.
+
+PASS: legacy mixed-version fixture has two users and real authorized outbox children.
+PASS: live, transitioning and unavailable managers refuse before backup or mutation.
+PASS: corrupt source, customized installed code and unknown overrides are preserved and refused.
+PASS: source files, installed targets, internal directories and systemd target symlinks are refused.
+PASS: cached and uncached foreign database settings are refused without touching either database or code.
+PASS: an old local-mode cache cannot bypass the raw off-host policy.
+PASS: an unavailable backup destination blocks code/schema changes.
+PASS: real migration preserves legacy users, wallets, grants, outbox children, configuration, dependencies and sites.
+PASS: a www-data-owned shared 0777 parent is supported without changing its permissions or another site.
+PASS: the authenticated encrypted pre-upgrade backup decrypts to the actual old schema and private rows.
+PASS: rerunning the verified updater preserves selected settings and all original data.
+PASS: app-entry replacement at three service boundaries, during root mv and during rendering preserves the held tree and root canary without executing or writing the hostile tree.
+Native monitoring upgrade regression passed. Systemctl was simulated; no actual workers or messages started.
