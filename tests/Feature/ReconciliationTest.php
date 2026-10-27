@@ -20,8 +20,11 @@ use App\Reconciliation\ResilientScanner;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class ReconciliationTest extends TestCase
@@ -405,6 +408,200 @@ class ReconciliationTest extends TestCase
         $this->artisan('chain:reconcile ethereum --once')->assertFailed();
     }
 
+    #[DataProvider('batchChains')]
+    public function test_batch_drains_25_tiny_ranges_with_four_head_network_calls_and_all_boundary_checks(string $chain): void
+    {
+        [$primary, $secondary, $cursor] = $this->backlog($chain, 25);
+
+        $results = (new Reconciler)->reconcileBatch($primary, $secondary, 25);
+
+        $this->assertCount(25, $results);
+        $this->assertSame(0, DB::table('scan_ranges')->where('cursor_id', $cursor)->whereNull('reconciled_at')->count());
+        $this->assertDatabaseHas('scan_cursors', ['chain' => $chain, 'role' => 'reconciliation', 'last_block' => 34]);
+        $this->assertSame(1, $primary->verifyCalls);
+        $this->assertSame(1, $secondary->verifyCalls);
+        $this->assertSame(1, $primary->headCalls);
+        $this->assertSame(1, $secondary->headCalls);
+        $this->assertCount(25, $primary->blockCalls);
+        $this->assertCount(49, $secondary->blockCalls); // Every end boundary and prior watermark, freshly fetched per range.
+        $this->assertCount(50, $secondary->queriedAddresses);
+        $this->assertDatabaseCount('reconciliation_checks', 25);
+        $this->assertDatabaseCount('transfers', 1);
+        $this->assertDatabaseCount('notification_outbox', 1);
+    }
+
+    public static function batchChains(): array
+    {
+        return [['ethereum'], ['tron']];
+    }
+
+    public function test_batch_limit_and_fresh_heads_between_batches_preserve_finality_waiting(): void
+    {
+        [$primary, $secondary, $cursor] = $this->backlog('ethereum', 4);
+        $reconciler = new Reconciler;
+        $this->assertCount(2, $reconciler->reconcileBatch($primary, $secondary, 2));
+        $secondary->head = 11;
+        $waiting = $reconciler->reconcileBatch($primary, $secondary, 25);
+        $this->assertCount(1, $waiting);
+        $this->assertTrue($waiting[0]->waitingForFinality);
+        $this->assertSame(2, $secondary->headCalls);
+        $this->assertDatabaseHas('scan_cursors', ['role' => 'reconciliation', 'last_block' => 11]);
+        $this->assertSame(2, DB::table('scan_ranges')->where('cursor_id', $cursor)->whereNull('reconciled_at')->count());
+        $secondary->head = 13;
+        $this->assertCount(2, $reconciler->reconcileBatch($primary, $secondary, 2));
+        $this->assertSame(3, $secondary->headCalls);
+        $this->assertDatabaseHas('scan_cursors', ['role' => 'reconciliation', 'last_block' => 13]);
+    }
+
+    public function test_error_in_later_batch_range_keeps_committed_progress_and_retry_after(): void
+    {
+        [$primary, $secondary, $cursor] = $this->backlog('tron', 4);
+        $secondary->blockErrors[11] = new RpcException('SECRET quota response', true, 429, 3600);
+        $reconciler = new Reconciler;
+        try {
+            $reconciler->reconcileBatch($primary, $secondary);
+            $this->fail('Expected a provider retry.');
+        } catch (RpcException $error) {
+            $this->assertSame(3600, $error->retryAfterSeconds);
+        }
+        $this->assertDatabaseHas('scan_cursors', ['role' => 'reconciliation', 'last_block' => 10, 'paused_at' => null]);
+        $this->assertSame(3, DB::table('scan_ranges')->where('cursor_id', $cursor)->whereNull('reconciled_at')->count());
+        $this->assertDatabaseHas('provider_health', ['chain' => 'tron', 'provider' => 'secondary', 'failure_count' => 1, 'last_http_status' => 429]);
+        $this->assertDatabaseCount('reconciliation_checks', 1);
+        try {
+            $reconciler->reconcileBatch($primary, $secondary);
+            $this->fail('Expected mandatory cooldown.');
+        } catch (ProviderCoolingDown $error) {
+            $this->assertGreaterThan(3500, $error->retryAfterSeconds);
+        }
+        $this->assertSame(1, $secondary->headCalls);
+    }
+
+    public function test_batch_stops_at_a_conflicting_later_boundary_without_rewriting_verified_work(): void
+    {
+        [$primary, $secondary, $cursor] = $this->backlog('ethereum', 4);
+        $secondary->blockHashes[11] = '0x'.str_repeat('f', 64);
+        try {
+            (new Reconciler)->reconcileBatch($primary, $secondary);
+            $this->fail('Expected a boundary conflict.');
+        } catch (ScanException) {
+            $this->assertDatabaseHas('scan_cursors', ['role' => 'reconciliation', 'last_block' => 10]);
+            $this->assertNotNull(DB::table('scan_cursors')->find($cursor)->paused_at);
+            $this->assertDatabaseHas('reconciliation_checks', ['status' => 'conflict', 'failure_code' => 'boundary_hash_mismatch']);
+            $this->assertSame(3, DB::table('scan_ranges')->where('cursor_id', $cursor)->whereNull('reconciled_at')->count());
+            $this->assertDatabaseCount('transfers', 1);
+            $this->assertDatabaseCount('notification_outbox', 1);
+        }
+    }
+
+    public function test_batch_cannot_jump_a_missing_range(): void
+    {
+        [$primary, $secondary, $cursor] = $this->backlog('ethereum', 4);
+        DB::table('scan_ranges')->where('cursor_id', $cursor)->where('from_block', 11)->delete();
+        try {
+            (new Reconciler)->reconcileBatch($primary, $secondary);
+            $this->fail('Expected a coverage gap.');
+        } catch (ScanException) {
+            $this->assertDatabaseHas('scan_cursors', ['role' => 'reconciliation', 'last_block' => 10]);
+            $this->assertSame(2, DB::table('scan_ranges')->where('cursor_id', $cursor)->whereNull('reconciled_at')->count());
+            $this->assertDatabaseCount('reconciliation_checks', 1);
+        }
+    }
+
+    public function test_batch_keeps_native_tron_receipt_fallback_available(): void
+    {
+        [$primary, $unused, $cursor] = $this->backlog('tron', 1);
+        $secondary = new ReconciliationNativeTronClient('secondary', 'tron');
+        $results = (new Reconciler)->reconcileBatch($primary, $secondary);
+        $this->assertTrue(end($results)->idle);
+        $this->assertGreaterThan(0, $secondary->nativeCalls);
+        $this->assertNotNull(DB::table('scan_ranges')->where('cursor_id', $cursor)->sole()->reconciled_at);
+        $this->assertDatabaseCount('notification_outbox', 1);
+    }
+
+    public function test_batch_history_wait_is_not_certified_by_a_head_snapshot(): void
+    {
+        [$primary, $secondary] = $this->backlog('tron', 4);
+        config(['blockchain.chains.tron.providers.secondary.history_start_block' => null]);
+        $results = (new Reconciler)->reconcileBatch($primary, $secondary);
+        $this->assertCount(1, $results);
+        $this->assertTrue($results[0]->waitingForHistory);
+        $this->assertSame(0, $primary->verifyCalls);
+        $this->assertSame(0, $secondary->verifyCalls);
+        $this->assertDatabaseMissing('scan_cursors', ['role' => 'reconciliation']);
+    }
+
+    public function test_batch_reports_progress_and_observes_a_pause_before_starting_the_next_range(): void
+    {
+        [$primary, $secondary, $cursor] = $this->backlog('ethereum', 4);
+        $reported = [];
+        try {
+            (new Reconciler)->reconcileBatch($primary, $secondary, 25, function ($result) use ($cursor, &$reported): void {
+                $reported[] = $result->rangeId;
+                DB::table('scan_cursors')->where('id', $cursor)->update(['paused_at' => now()]);
+            });
+            $this->fail('Expected a paused cursor to stop the next unit.');
+        } catch (ScanException) {
+            $this->assertCount(1, $reported);
+            $this->assertDatabaseHas('scan_cursors', ['role' => 'reconciliation', 'last_block' => 10]);
+            $this->assertSame(3, DB::table('scan_ranges')->where('cursor_id', $cursor)->whereNull('reconciled_at')->count());
+            $this->assertCount(1, $primary->blockCalls);
+            $this->assertCount(1, $secondary->blockCalls);
+        }
+    }
+
+    public function test_once_command_keeps_one_range_semantics_with_default_batching(): void
+    {
+        [$primary, $secondary, $cursor] = $this->backlog('ethereum', 3);
+        foreach (['primary', 'secondary'] as $role) {
+            config(['blockchain.chains.ethereum.providers.'.$role => [
+                'rpc_url' => 'https://'.$role.'.example.test/SECRET', 'history_start_block' => 0, 'attempts' => 1,
+            ]]);
+        }
+        Http::fake(function (Request $request) use ($primary, $secondary) {
+            $client = str_contains($request->url(), 'secondary') ? $secondary : $primary;
+            $result = match ($request['method']) {
+                'eth_chainId' => '0x1',
+                'eth_getBlockByNumber' => array_replace($client->block($request['params'][0] === 'finalized' ? 12 : hexdec(substr($request['params'][0], 2))), [
+                    'number' => $request['params'][0] === 'finalized' ? '0xc' : $request['params'][0], 'timestamp' => '0x'.dechex(1793030400),
+                ]),
+                'eth_getLogs' => $request['params'][0]['topics'][1] === null ? [] : [$client->log],
+                'eth_getTransactionReceipt' => $client->receipt($request['params'][0]),
+            };
+
+            return Http::response(['jsonrpc' => '2.0', 'id' => $request['id'], 'result' => $result]);
+        });
+
+        $this->assertSame(0, Artisan::call('chain:reconcile', ['chain' => 'ethereum', '--once' => true]));
+        $this->assertDatabaseHas('scan_cursors', ['role' => 'reconciliation', 'last_block' => 10]);
+        $this->assertSame(2, DB::table('scan_ranges')->where('cursor_id', $cursor)->whereNull('reconciled_at')->count());
+        $this->assertSame(1, substr_count(Artisan::output(), 'Verified range'));
+    }
+
+    public function test_invalid_batch_size_stops_before_provider_requests(): void
+    {
+        config(['blockchain.chains.ethereum.providers.primary.rpc_url' => 'https://primary.example.test',
+            'blockchain.chains.ethereum.providers.secondary.rpc_url' => 'https://secondary.example.test']);
+        foreach (['0', '101', 'invalid'] as $batch) {
+            $this->assertSame(2, Artisan::call('chain:reconcile', ['chain' => 'ethereum', '--once' => true, '--batch' => $batch]));
+        }
+        Http::assertNothingSent();
+    }
+
+    private function backlog(string $chain, int $ranges): array
+    {
+        [$primary, $secondary, $cursor] = $this->pair($chain);
+        $primary->head = $secondary->head = 9 + $ranges;
+        for ($i = 0; $i < $ranges; $i++) {
+            (new BlockScanner)->scan($primary, 1);
+        }
+        $primary->verifyCalls = $primary->headCalls = 0;
+        $primary->blockCalls = [];
+        $primary->queriedAddresses = [];
+
+        return [$primary, $secondary, $cursor];
+    }
+
     private function pair(string $chain = 'ethereum'): array
     {
         config(['blockchain.chains.'.$chain.'.providers.primary.history_start_block' => 0, 'blockchain.chains.'.$chain.'.providers.secondary.history_start_block' => 0]);
@@ -442,6 +639,14 @@ class ReconciliationFakeClient implements ChainClient
 
     public int $receiptCalls = 0;
 
+    public int $headCalls = 0;
+
+    public array $blockCalls = [];
+
+    public array $blockHashes = [];
+
+    public array $blockErrors = [];
+
     public array $queriedAddresses = [];
 
     public array $log;
@@ -476,16 +681,22 @@ class ReconciliationFakeClient implements ChainClient
 
     public function finalizedBlock(): array
     {
+        $this->headCalls++;
+
         return ['number' => $this->head, 'hash' => $this->hashOverride ?? '0x'.str_repeat('b', 64), 'timestamp' => 1793030400];
     }
 
     public function block(int $number): array
     {
+        $this->blockCalls[] = $number;
+        if (isset($this->blockErrors[$number])) {
+            throw $this->blockErrors[$number];
+        }
         if ($this->blockError !== null) {
             throw $this->blockError;
         }
 
-        return ['number' => $number, 'hash' => $this->hashOverride ?? '0x'.str_repeat('b', 64), 'timestamp' => 1793030400];
+        return ['number' => $number, 'hash' => $this->blockHashes[$number] ?? $this->hashOverride ?? '0x'.str_repeat('b', 64), 'timestamp' => 1793030400];
     }
 
     public function logs(int $from, int $to, array $normalizedWatchedAddresses, string $direction): array
