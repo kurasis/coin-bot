@@ -53,7 +53,7 @@ Official documentation checked on 2026-10-27 lists a recurring Free tier with **
 
 At the configured 12-hour repeat policy and roughly 225 new Ethereum finalized ranges/day, a sparse-wallet example with about 450 total range checks/day needs roughly 0.30-0.40 million credits/day for two log queries, two boundaries and amortized heads. Receipt-heavy wallets, large address sets, outages and backfills add usage. This is a model, not acceptance of the user's not-yet-created account.
 
-1. Create a Free account at https://developer.metamask.io/ and an Ethereum Mainnet API key. Verify the plan allowance and absence of a trial-expiration condition in Billing. Keep the key in the server's private `.env`; never send it in chat or commit it.
+1. Open the dedicated Infura dashboard at https://app.infura.io/ (registration: https://app.infura.io/register), as linked by the [official Infura onboarding guide](https://docs.infura.io/get-started/infura/). Verify your email, select **My First Key** or **Configure**, then open **All Endpoints** and choose Ethereum Mainnet. The general MetaMask Developer portal can open Embedded Wallets/Web3Auth instead: **Authentication**, **Smart Accounts**, **Wallet Services**, or `sapphire_devnet` identify that separate product. Its Devnet/Mainnet upgrade is not the Ethereum RPC setup. Do not infer Infura payment-card eligibility from that screen; check the actual Infura account. Verify the plan allowance and absence of a trial-expiration condition in Billing. Keep the key in the server's private `.env`; never send it in chat or commit it.
 2. Install this package first using the normal native monitoring updater. It keeps QuickNode working until the new account is ready.
 3. Stop workers and edit `/home/www/coinbot/.env`. Replace `ETHEREUM_SECONDARY_RPC_URL` with the new Infura Ethereum Mainnet HTTPS URL. Set the following non-secret settings. Clear the old secondary history declaration until the new account passes its own history probe:
 
@@ -79,6 +79,7 @@ Require `status=ok`, positive incoming matches and `receipts_checked > 0`; empty
 
 ## Sources
 
+- https://docs.infura.io/get-started/infura/
 - https://docs.infura.io/get-started/pricing/
 - https://docs.infura.io/get-started/pricing/credit-cost/
 - https://www.infura.io/pricing (the comparison table agrees with 3M/day and 500/s; its FAQ contains conflicting higher figures, so the conservative documented allowance is used)
