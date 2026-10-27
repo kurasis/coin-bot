@@ -1,0 +1,22 @@
+Coin Bot complete development package verification
+Source commit: 20631d248258d9bf162ce4fa49baa7fd4a6841c5
+Archive: coin-bot-full-20631d2.zip
+SHA-256: afd416a88c312238440a38faf2c2cd322f77323f2196d89e44dccd7cd63d741b
+Archive bytes: 8886375
+ZIP members: 6107
+Production dependencies: 74; Composer bundled; no development dependencies.
+
+Executed local checks:
+- Strict bin/verify on PHP 8.5.12: 445 tests / 2526 assertions, Pint 149 PHP files, Composer validation and SQLite durability checks.
+- Read-only provider diagnostics: precise sanitized categories/HTTP statuses, verified networks and heads, role selection, no HTTP during existing cooldown or offline mode, no endpoint/credential/raw-error/user-identity output. Complete before/after SQLite snapshots confirm no persistent mutations.
+- Actual committed full ZIP: every manifest/member hash, safe paths, prohibited artifact exclusion, blank credential placeholders, executable modes, new diagnostics and monitoring components, 74 production dependencies.
+- Actual ZIP relocation: production platform checks, autoload, package discovery and all migrations with isolated memory SQLite.
+- Actual full ZIP network-free native update harness: all 12 fixture stages passed against mixed 88483c3 + b908565 data, including a www-data-owned /home/www with mode0777. Real synthetic SQLite users/wallets/outbox/auth/attempt state, backup policy, original APP_KEY, website/FPM/INI fixtures and parent ownership/mode were preserved. Encrypted pre-upgrade backup decrypts to the old schema; idempotency and symlink/custom-code/live-writer/cached-config refusal cases passed.
+- Five real directory replacement races: three state-check boundaries, rendering, and during a root file move. The held original tree remains the privileged application-write boundary; the hostile replacement tree/canary is untouched and never executed by root. Systemctl is simulated; no actual workers or messages start.
+- Guarded backup helper: shared-writable/non-root/symlink ancestors refuse privileged mode changes before root actions; ordinary commands remain unprivileged. All seven protected-path native-backup regression stages passed, including encrypted backup/enrollment and local/offhost transitions.
+- Fresh installer refuses writable/non-root existing parents before mutation while preserving website metadata/bytes. The native installation fixture includes these cases for Bookworm/Trixie CI.
+- Metadata covers 31 runtime components and nine unchanged compatibility guards. Bash/Python syntax, guide shell blocks/local links, independent privilege-boundary review and whitespace checks passed.
+
+Existing installation: extract the ZIP separately, stop Coin Bot, run deploy/update-native-monitoring.sh, and start only after exit0. The updater supports shared /home/www ownership/modes and preserves the selected local/offhost backup policy. It never changes Nginx/FPM, packages, website parent ownership/modes, credentials or wallet/user data.
+
+Scope limits: held-directory containment protects privileged updater operations, not the existing runtime trust of a replaceable shared hosting parent. Backup mode changes and fresh installation require protected root-owned ancestors. Actual provider failure/retention must be diagnosed on the operator's host; no history floor or provider account capability was fabricated. Real Telegram, account quotas/head freshness, actual systemd namespaces, off-host durability and production operation remain unvalidated.
