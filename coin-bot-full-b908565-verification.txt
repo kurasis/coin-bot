@@ -1,0 +1,13 @@
+Coin Bot complete native local-backup package
+Source: b908565e184466e46c10503c042a539827b4ebbc
+ZIP: coin-bot-full-b908565.zip; bytes: 8805150; members: 6082
+SHA-256: 9040b1252342c60238e90e469efc11cb06399be7612501942e7e568555c088ba
+Composer and 74 locked production dependencies included; private configuration, databases and development dependencies excluded.
+Actual ZIP integrity, every manifest hash, executable modes, private-file exclusions, relocation/platform/autoload/discovery and memory-SQLite migrations passed.
+Actual final ZIP passed bin/verify-native-backups: baseline missing-mount refusal; verified narrow update preserving APP_KEY/configuration/SQLite/base unit and Nginx/FPM/INI fixtures; encrypted local storage and root-owned mode override; actual encrypted backup and one issued key; cache clearing, idempotency, active/transitional/error-state and mismatch/permissions guards; strict off-host restoration.
+The actual candidate release manifest was used unchanged. Systemctl was simulated; no real workers, recipients, external networks or host configurations were used.
+Separate updater validation passed 13 acceptance/refusal fixtures. Systemd 257 parsed both configurations; actual namespaces/reboot and Bookworm systemd 252 were not started.
+Strict bin/verify on PHP 8.5.12 passed 338 tests / 1880 assertions, Composer validation, Pint (128 PHP files), runtime/SQLite/index checks. New verifier Python and guide Bash/link checks passed.
+Explicit local mode uses /var/lib/coin-bot/backups, consistent authenticated encryption, and required backup freshness checks. Same-server/disk loss can lose both data and copies. Default offhost remains strict; no fake local mount or global mount-check removal.
+For existing installations, stop all Coin Bot workers and run deploy/update-native-backups.sh from this separately extracted ZIP; then sudo coin-bot backup:local and sudo coin-bot enroll. The updater changes only eight verified code components and the installed helper; no .env/key/SQLite/dependency/base-unit/web/package replacement. Mode selection changes only backup mode/directory/require settings and managed Coin Bot override.
+Fresh installation remains first-install only. Actual production host/provider/recipient/off-host recovery acceptance remains deferred.
