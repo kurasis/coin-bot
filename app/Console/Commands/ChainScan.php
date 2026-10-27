@@ -9,6 +9,7 @@ use App\Monitoring\CheckAttempt;
 use App\Monitoring\CheckedChainClient;
 use App\Monitoring\MonitoringCycle;
 use App\Monitoring\MonitoringReadiness;
+use App\Monitoring\ScanCadence;
 use App\Monitoring\ScanException;
 use App\Operations\Heartbeat;
 use App\Operations\MaintenanceGuard;
@@ -41,6 +42,8 @@ class ChainScan extends Command
             return self::INVALID;
         }
         do {
+            $started = hrtime(true);
+            $catchingUp = false;
             $attempt = null;
             $idle = true;
             try {
@@ -62,6 +65,7 @@ class ChainScan extends Command
                         ? $scanner->scanWithSecondary($primary, $secondary, $range)
                         : $scanner->scan($primary, $secondary, $range), $attempt);
                     $idle = $result->idle;
+                    $catchingUp = ! $idle && $result->toBlock - $result->fromBlock + 1 >= $range;
                     app(Heartbeat::class)->record('scan-'.$chain);
                     $this->line($idle ? 'No new finalized blocks.' : "Completed blocks {$result->fromBlock}-{$result->toBlock}: {$result->events} transfer events.");
                 }
@@ -84,7 +88,10 @@ class ChainScan extends Command
                 }
             }
             if (! $this->option('once')) {
-                sleep($idle ? $interval : 1);
+                $remaining = ScanCadence::remainingMicros($chain, $idle, $catchingUp, $interval, intdiv(hrtime(true) - $started, 1000));
+                if ($remaining > 0) {
+                    usleep($remaining);
+                }
             }
         } while (! $this->option('once'));
 

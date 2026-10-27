@@ -1,6 +1,7 @@
 <?php
 
 return [
+    'api_usage_enabled' => (bool) env('API_USAGE_ENABLED', true),
     'backup_mode' => env('OPERATIONS_BACKUP_MODE', 'offhost'),
     'alert_user_id' => env('OPERATIONS_ALERT_USER_ID', 1),
     'alert_failure_threshold' => env('OPERATIONS_ALERT_FAILURE_THRESHOLD', 3),

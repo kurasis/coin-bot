@@ -198,6 +198,8 @@ class ReconciliationTest extends TestCase
         $this->assertDatabaseCount('transfers', 0);
         $primary->omitLogs = $secondary->omitLogs = false;
         $this->travel(16)->minutes();
+        $this->assertTrue((new Reconciler)->reconcile($primary, $secondary)->idle);
+        $this->travel(12)->hours();
         $result = (new Reconciler)->reconcile($primary, $secondary);
         $this->assertSame(1, $result->repairedEvents);
         $this->assertDatabaseCount('notification_outbox', 1);

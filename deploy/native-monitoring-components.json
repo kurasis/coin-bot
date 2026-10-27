@@ -5,9 +5,17 @@
     "b908565e184466e46c10503c042a539827b4ebbc",
     "48df016c8822401b1b68e117ce63f591de9a51f3",
     "20631d248258d9bf162ce4fa49baa7fd4a6841c5",
-    "12bfcfa606d9bb995322f3d6727b4ad3d9361e7f"
+    "12bfcfa606d9bb995322f3d6727b4ad3d9361e7f",
+    "d2e2e21e9e4c2df6e51e87f92e6617f57e138f11"
   ],
   "components": {
+    "app/Blockchain/ChainClientFactory.php": {
+      "mode": 420,
+      "required": true,
+      "baseline_sha256": [
+        "a8c2907658b4d24e24c8309945bda8c6e63c4e5bce41c1fafb4c7e05a2e188ff"
+      ]
+    },
     "app/Blockchain/EthereumRpcClient.php": {
       "mode": 420,
       "required": true,
@@ -63,6 +71,11 @@
         "1a94603d7117f6b447879bf84e689a4ebf6af3555029590164467b6eee78eca5",
         "5c023e33d4afcc30ec2ef1c886322b84cfef4833154ec700d4075a3eeeb870cc"
       ]
+    },
+    "app/Console/Commands/OpsApiUsage.php": {
+      "mode": 420,
+      "required": false,
+      "baseline_sha256": []
     },
     "app/Console/Commands/TelegramDeliver.php": {
       "mode": 420,
@@ -132,6 +145,21 @@
         "fe9d70f7426180d02b8a7621fb4ed60f157019d03c40085f1b695b39c4bf0758",
         "80f1bdb9968828b3699eabda66106bced050c1c766649c08fc78158a0479bf50"
       ]
+    },
+    "app/Monitoring/ScanCadence.php": {
+      "mode": 420,
+      "required": false,
+      "baseline_sha256": []
+    },
+    "app/Operations/ApiPolicy.php": {
+      "mode": 420,
+      "required": false,
+      "baseline_sha256": []
+    },
+    "app/Operations/ApiUsage.php": {
+      "mode": 420,
+      "required": false,
+      "baseline_sha256": []
     },
     "app/Operations/HealthReport.php": {
       "mode": 420,
@@ -222,6 +250,13 @@
         "822d12182cc3032de222e2dacc8c0c842532dc562adbc1879aec6776264a0da5"
       ]
     },
+    "config/blockchain.php": {
+      "mode": 420,
+      "required": true,
+      "baseline_sha256": [
+        "853e36e4f0733df3c97719aff30c67632278a2d6b0f5278bfaa85f5a58629f06"
+      ]
+    },
     "config/ethereum.php": {
       "mode": 420,
       "required": false,
@@ -236,6 +271,13 @@
         "7153341c4fb6fad562965caf2c25258fa77c7fb649a77e9d0628c71691eaa87b",
         "7e8319ea556281659d4df308ebc44949d15cbd8983e199c9af0b4eacc3ca33e6",
         "3d59a9a4d9dddca9e5838fb7346d8e5523e6115f0f5bcafe87378c0e6a474573"
+      ]
+    },
+    "config/reconciliation.php": {
+      "mode": 420,
+      "required": true,
+      "baseline_sha256": [
+        "d9bc1e6aad2fab6a3da05158ab4ae7445b95487ba6a40a4946083a5d8d3809a5"
       ]
     },
     "database/migrations/2026_10_27_000100_add_ethereum_early_monitoring.php": {

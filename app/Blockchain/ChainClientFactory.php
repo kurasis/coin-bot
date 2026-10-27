@@ -18,7 +18,7 @@ final class ChainClientFactory
         if (! is_array($settings)) {
             throw new RpcException('Blockchain provider configuration is missing.');
         }
-        $transport = new RpcTransport($settings);
+        $transport = new RpcTransport($settings, $chain, $provider);
 
         return $chain === 'ethereum'
             ? new EthereumRpcClient($transport, $provider, $settings)
