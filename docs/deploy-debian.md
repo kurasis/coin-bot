@@ -48,7 +48,14 @@ sudo coin-bot start
 sudo coin-bot status
 ```
 
-For around 100 wallets, use `sudo coin-bot wallet:import --help` to import a CSV/JSON file. Initial backup/reconciliation work must finish before health is complete. Keep independent monitoring and verify off-host recovery before relying on delivery.
+For a text list, put one address per line in `wallets-tron.txt`, then import it for the selected internal user:
+
+```bash
+sudo install -o coin-bot -g coin-bot -m 0600 wallets-tron.txt /home/www/coinbot/storage/app/wallets-tron.txt
+sudo coin-bot wallet:import /home/www/coinbot/storage/app/wallets-tron.txt --chain=tron --user=USER_ID
+```
+
+Use `--chain=ethereum` for an Ethereum list. Up to 100 address lines are accepted per command; one invalid record rejects the entire batch, and repeat imports preserve existing settings. See [bulk text import](wallet-import.md) for all options and CSV/JSON compatibility. Initial backup/reconciliation work must finish before health is complete. Keep independent monitoring and verify off-host recovery before relying on delivery.
 
 ## Stop, configure, or update
 

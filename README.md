@@ -6,6 +6,8 @@ Stack: **PHP 8.5, Laravel 13, SQLite**. The service observes public blockchain d
 
 Multiple users have isolated wallets, settings, and notifications. Access requires an individual activation key bound to the recipient's Telegram user ID. Unknown/inactive users receive no replies. An optional `TELEGRAM_ALLOWED_USER_IDS` list further restricts enrollment and all outgoing messages; see [private access settings](docs/configuration.md#private-bot-access).
 
+The operator CLI supports [bulk wallet import from a plain text file](docs/wallet-import.md): one address per line with an explicit chain and internal user ID. Existing CSV/JSON imports remain available.
+
 See [the architecture and reliability design](docs/architecture.md) for the recommended approach and [the development plan](docs/development-plan.md) for stages P01-P13, dependencies, and acceptance criteria.
 
 ## Project status
