@@ -1,0 +1,14 @@
+Coin Bot complete package: plain-text bulk wallet import
+Source: 16fac4285bc2be8f76d2a22f252fbdaadeed1e08
+Application path: /home/www/coinbot
+Full ZIP includes Composer and 74 locked production dependencies; no development dependencies.
+ZIP: coin-bot-full-16fac42.zip
+Bytes: 8746525; members: 6066
+SHA-256: 163a08c08f2c78586c47151f13a44078f0299164336e1ad2ffd12fa075e74a61
+ZIP integrity, every manifest hash, executable modes, production dependencies and private-file exclusions passed.
+Actual final ZIP relocation, platform requirements, autoload, package discovery and memory-SQLite migrations passed.
+Standalone actual-ZIP TXT import passed with no development dependencies and no network: 100 Ethereum and 2 Base58 TRON wallets; repeat import preserved the entire database; a later invalid address rejected the whole batch without exposing input; 27 checks; 0 HTTP attempts or deliveries.
+Strict bin/verify passed on PHP 8.5.12: runtime/SQLite/index checks, Composer validation, Pint (117 PHP files), 247 tests / 1249 assertions.
+TXT: UTF-8, one address per line, explicit chain and internal user ID; up to 100 address lines and 1 MiB; BOM/Windows line endings, empty lines and full-line comments supported. Existing user settings remain unchanged on repeat imports; active access is required.
+Debian 12 Bookworm / Debian 13 Trixie installer and shared-host --no-packages protections are unchanged from the previously native-validated b178044 package. This release did not repeat native APT installation tests because deployment code did not change.
+No real recipients, production services, web-server configuration, or system packages were changed. Live provider/recipient/off-host recovery acceptance remains deferred.
