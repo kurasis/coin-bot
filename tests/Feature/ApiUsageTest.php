@@ -42,7 +42,7 @@ class ApiUsageTest extends TestCase
         $first->admit($policy, 'eth_getLogs');
         $second->onSleep = function (): void {
             // Another process can read the group during this wait.
-            $this->assertSame(1, (new ApiUsage)->report()['providers']['ethereum_primary']['requests']);
+            $this->assertSame(1, (new ApiUsage)->report('2026-10-27')['providers']['ethereum_primary']['requests']);
         };
         config(['blockchain.chains.ethereum.providers.primary.usage_profile' => 'alchemy']);
         $second->admit($policy, 'eth_chainId');

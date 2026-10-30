@@ -6,7 +6,9 @@
     "48df016c8822401b1b68e117ce63f591de9a51f3",
     "20631d248258d9bf162ce4fa49baa7fd4a6841c5",
     "12bfcfa606d9bb995322f3d6727b4ad3d9361e7f",
-    "d2e2e21e9e4c2df6e51e87f92e6617f57e138f11"
+    "d2e2e21e9e4c2df6e51e87f92e6617f57e138f11",
+    "ad2e14dec446e2a300a03a14d9c3f3fe6b33c9c1",
+    "c37ee0dc7cfa317571157ab8e2dce33e03d96d01"
   ],
   "components": {
     "app/Blockchain/ChainClientFactory.php": {
@@ -159,7 +161,9 @@
     "app/Operations/ApiUsage.php": {
       "mode": 420,
       "required": false,
-      "baseline_sha256": []
+      "baseline_sha256": [
+        "b48d5936392f5004a23a7cadbf4cd5c540ceee4afdabb8955d8c7d3fb8454ae3"
+      ]
     },
     "app/Operations/HealthReport.php": {
       "mode": 420,

@@ -18,14 +18,14 @@ use Throwable;
 
 final class EthereumEarlyScan extends Command
 {
-    protected $signature = 'ethereum:early-scan {--once} {--range=100} {--interval=15}';
+    protected $signature = 'ethereum:early-scan {--once} {--range=100} {--interval= : Polling seconds; defaults to ETHEREUM_EARLY_INTERVAL_SECONDS}';
 
     protected $description = 'Observe preliminary Ethereum USDT after confirmations without advancing finalized coverage';
 
     public function handle(ChainClientFactory $factory, ResilientEarlyScanner $scanner, MonitoringCycle $cycles, MonitoringReadiness $readiness, MonitoringIncidentService $incidents, Heartbeat $heartbeat): int
     {
         $range = filter_var($this->option('range'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 10000]]);
-        $interval = filter_var($this->option('interval'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 3600]]);
+        $interval = filter_var($this->option('interval') ?? config('ethereum.early_interval_seconds', 15), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 3600]]);
         if ($range === false || $interval === false) {
             return self::INVALID;
         }

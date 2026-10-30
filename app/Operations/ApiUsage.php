@@ -127,7 +127,9 @@ class ApiUsage
                 if (! $write) {
                     return $operation($state);
                 }
-                if (! mkdir($directory, 0700, true) && ! is_dir($directory)) {
+                // Another worker may create the directory after is_dir(). A
+                // benign EEXIST warning must not abort shared API admission.
+                if (! @mkdir($directory, 0700, true) && ! is_dir($directory)) {
                     throw new RuntimeException;
                 }
             }

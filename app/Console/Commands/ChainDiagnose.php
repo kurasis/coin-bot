@@ -43,6 +43,11 @@ class ChainDiagnose extends Command
                     'oldest_from_block' => $oldest === null ? null : (int) $oldest->from_block,
                     'oldest_to_block' => $oldest === null ? null : (int) $oldest->to_block,
                 ],
+                'resource_controls' => [
+                    'reconciliation_recheck_seconds' => (int) config('reconciliation.recheck_after_seconds', 43200),
+                    'scan_min_interval_seconds' => (int) config('blockchain.chains.'.$chain.'.scan_min_interval_seconds', 1),
+                    'ethereum_early_interval_seconds' => $chain === 'ethereum' ? (int) config('ethereum.early_interval_seconds', 15) : null,
+                ],
                 'providers' => [],
             ];
             foreach (['primary', 'secondary'] as $provider) {
@@ -72,6 +77,10 @@ class ChainDiagnose extends Command
             'history_start_block' => $minimum === false ? null : $minimum,
             'history_floor' => $floor === null ? 'unknown' : ($minimum === false ? 'invalid' : 'declared'),
             'history_covers_oldest_pending' => $oldest === null ? null : ($minimum !== false && (int) $oldest->from_block >= $minimum),
+            'query_limits' => [
+                'max_block_range' => max(1, (int) ($settings['max_block_range'] ?? 5000)),
+                'max_topic_addresses' => max(1, (int) ($settings['max_topic_addresses'] ?? 100)),
+            ],
             'status' => $selected ? 'not_checked' : 'not_selected',
             'network' => 'not_checked',
             'chain_id' => null,

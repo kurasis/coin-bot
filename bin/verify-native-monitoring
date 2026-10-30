@@ -128,6 +128,7 @@ $values=[
  'OPERATIONS_REQUIRED_WORKERS'=>'scan-ethereum,scan-tron,telegram-poll,telegram-deliver,backfill,backups,reconcile-ethereum,reconcile-tron,custom-probe-heartbeat',
  'TELEGRAM_BOT_TOKEN'=>'synthetic-native-monitoring-token','TELEGRAM_ALLOWED_USER_IDS'=>'990000001,990000002',
  'ETHEREUM_PRIMARY_RPC_URL'=>'https://primary.invalid','ETHEREUM_SECONDARY_RPC_URL'=>'https://secondary.invalid',
+ 'ETHEREUM_EARLY_INTERVAL_SECONDS'=>'30',
  'TRON_PRIMARY_RPC_URL'=>'https://tron-primary.invalid/jsonrpc','TRON_PRIMARY_NATIVE_URL'=>'https://tron-primary.invalid',
  'TRON_SECONDARY_RPC_URL'=>'https://tron-secondary.invalid/jsonrpc','TRON_SECONDARY_NATIVE_URL'=>'https://tron-secondary.invalid',
 ];
@@ -356,6 +357,7 @@ foreach($previous as $name=>$value) {
 }
 if(config('operations.api_usage_enabled')!==true || (int)config('blockchain.chains.tron.scan_min_interval_seconds')!==15
  || (int)config('reconciliation.recheck_after_seconds')!==43200 || config('ethereum.early_enabled')!==true || (int)config('ethereum.confirmations')!==6
+ || ($current['ETHEREUM_EARLY_INTERVAL_SECONDS']??null)!=='30' || (int)config('ethereum.early_interval_seconds')!==30
  || (int)config('operations.alert_user_id')!==1 || (int)config('operations.alert_failure_threshold')!==3
  || (int)config('operations.alert_min_outage_seconds')!==30
  || !in_array('scan-ethereum-early',config('operations.required_workers'),true)

@@ -85,7 +85,10 @@ class BlockScanner
         $head = $client->finalizedBlock();
         $this->validateHeader($head);
         if ($cursor->last_block_hash !== null && $cursor->last_block >= 0) {
-            $previous = $client->block((int) $cursor->last_block);
+            // The finalized head already contains this exact boundary on idle
+            // scans. Reuse this response, never a header from an earlier cycle.
+            $previous = (int) $cursor->last_block === $head['number']
+                ? $head : $client->block((int) $cursor->last_block);
             if ($previous['hash'] !== $cursor->last_block_hash) {
                 $this->pauseBoundaryMismatch($cursor);
                 throw new ScanException('Finalized boundary hash changed; scanning has been paused.');
@@ -204,6 +207,18 @@ class BlockScanner
 
     private function query(ChainClient $client, int $from, int $to, array $addresses, string $direction): array
     {
+        $span = max(1, (int) config('blockchain.chains.'.$client->chain().'.providers.'.$client->provider().'.max_block_range', 5000));
+        if ($to - $from + 1 > $span) {
+            // Fill the known span instead of recursively halving into many
+            // underfilled requests. Unknown result/payload limits still split.
+            $logs = [];
+            for ($start = $from; $start <= $to; $start = $end + 1) {
+                $end = min($to, $start + $span - 1);
+                array_push($logs, ...$this->query($client, $start, $end, $addresses, $direction));
+            }
+
+            return $logs;
+        }
         try {
             return $client->logs($from, $to, $addresses, $direction);
         } catch (RangeLimitException $exception) {

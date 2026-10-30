@@ -33,9 +33,9 @@ final class EthereumEarlyScanner
         $latest = $this->header($client->latestBlock());
         $depth = max(1, min(64, (int) config('ethereum.confirmations', 6)));
         $height = max(0, $latest['number'] - $depth);
-        $head = $this->header($client->block($height), $height);
         $state = DB::table('ethereum_early_state')->find(1);
         if ($state === null) {
+            $head = $this->header($client->block($height), $height);
             DB::transaction(function () use ($primary, $head): void {
                 $this->assertWatchSet($primary);
                 if (DB::table('ethereum_early_state')->exists()) {
@@ -62,6 +62,10 @@ final class EthereumEarlyScanner
         if ($from > $to) {
             return new ScanResult(1, null, null, 0, true);
         }
+        // Idle checks still verify the durable boundary above, but need no
+        // second read of the same height. Productive checks retain both fresh
+        // before/after anchors; do not cache across event collection.
+        $head = $this->header($client->block($height), $height);
         $events = $this->collector->collectProvisionalEthereum($client, (int) $primary->watch_set_id, $from, $to, $height);
         $boundary = $this->header($client->block($to), $to);
         $stableHead = $to === $height ? $boundary : $this->header($client->block($height), $height);

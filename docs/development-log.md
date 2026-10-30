@@ -1,5 +1,13 @@
 # Development evidence
 
+## RPC consumption reductions - 2026-10-30
+
+- Reuse a fresh finalized-head response only when it is the exact durable boundary, and omit the duplicate confirmation-height read on early idle checks. Idle hash mismatches still fail, and productive early collection retains fresh before/after reorg anchors.
+- Pack configured log spans into full consecutive chunks while retaining adaptive splitting for unknown result/payload limits. A 97- or 100-block range at a 10-block cap now uses 20 log requests across both directions instead of 32, without gaps or skipped final chunks.
+- Add effective, credential-free query limits and resource settings to offline chain diagnostics. Add the optional `ETHEREUM_EARLY_INTERVAL_SECONDS` setting, defaulting to the existing 15 seconds and overridable on the CLI. Native updates preserve an explicitly selected 30-second interval; no provider limits, credentials or history declarations are changed automatically.
+- A deterministic one-hour sparse Ethereum HTTP simulation measured 66,900 Alchemy CU on `c37ee0d`, 62,280 after the code changes at 15 seconds, and 35,880 at an optional 30 seconds. This excludes independent reconciliation, receipts, retries, recovery, latency and other account consumers; it is not a live daily-budget guarantee.
+- Strict `bin/verify` passed on PHP 8.5.12: **483 tests / 2848 assertions**, Pint, Composer and runtime/SQLite/index checks. Regressions cover exact range coverage, fresh idle boundaries, stale heads, reorg rejection, private offline diagnostics and interval validation. Fixed an existing virtual-clock accounting assertion to request its fixture date explicitly instead of depending on the wall-clock date. Also tolerate a benign directory-already-created race when concurrent workers first initialize API accounting; unavailable storage still blocks requests. The network-free native updater harness passed with simulated systemctl; no production account, worker or recipient was accessed.
+
 All results below were obtained on PHP 8.5.12 / Laravel 13.38.0 on 2026-10-26. Production readiness is tracked separately from offline implementation.
 
 ## P01 - Complete

@@ -62,6 +62,52 @@ class EthereumEarlyMonitoringTest extends TestCase
         $this->assertDatabaseCount('notification_outbox', 0);
     }
 
+    public function test_idle_poll_reads_the_durable_boundary_only_once_and_still_detects_a_reorg(): void
+    {
+        $this->member('91001', 'Alice');
+        $client = $this->client();
+        $this->prime($client);
+        $client->requests = [];
+
+        $this->assertTrue(app(EthereumEarlyScanner::class)->scan($client)->idle);
+        $this->assertSame(['network', 'latest', 'block:15', 'block:9'], $client->requests);
+
+        $client->reorganize(9);
+        try {
+            app(EthereumEarlyScanner::class)->scan($client);
+            $this->fail('An idle reorg must still require independent evidence.');
+        } catch (ScanException) {
+            $this->assertTrue((bool) DB::table('ethereum_early_state')->sole()->reorg_pending);
+            $this->assertDatabaseCount('ethereum_early_events', 0);
+            $this->assertDatabaseCount('notification_outbox', 0);
+        }
+    }
+
+    public function test_productive_poll_rechecks_its_confirmation_anchor_after_event_collection(): void
+    {
+        $this->member('91001', 'Alice');
+        $client = $this->client();
+        $this->prime($client);
+        $client->latestHead = 17;
+        $changed = false;
+        $client->duringBlock = function (int $height) use ($client, &$changed): void {
+            if ($height === 11 && ! $changed) {
+                $changed = true;
+                $client->reorganize(11, false);
+            }
+        };
+
+        try {
+            app(EthereumEarlyScanner::class)->scan($client);
+            $this->fail('A reorg during collection must reject the snapshot.');
+        } catch (ScanException) {
+            $this->assertSame(9, (int) DB::table('ethereum_early_state')->sole()->last_block);
+            $this->assertTrue((bool) DB::table('ethereum_early_state')->sole()->reorg_pending);
+            $this->assertDatabaseCount('ethereum_early_events', 0);
+            $this->assertDatabaseCount('notification_outbox', 0);
+        }
+    }
+
     public function test_six_block_early_delivery_is_preliminary_and_does_not_advance_finalized_coverage(): void
     {
         $this->member('91001', 'Alice private label');
