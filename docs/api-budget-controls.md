@@ -66,13 +66,13 @@ Check these causes before changing accounts or budgets:
 - Verify `RECONCILIATION_RECHECK_SECONDS=43200`. A shorter custom setting repeatedly queries already verified ranges. The first independent verification remains mandatory; reducing its frequency or dropping it is not an optimization in this release.
 - Preliminary Ethereum observations are an additional scan, including when no watched transfer occurs. Six confirmations do not eliminate the cost of polling, log filters and canonical boundary checks.
 
-An optional lower-cost cadence is now available through the private environment file:
+The approved lower-cost cadence is now the default, configurable through the private environment file:
 
 ```dotenv
 ETHEREUM_EARLY_INTERVAL_SECONDS=30
 ```
 
-The default remains 15 seconds. Changing 15 to 30 can add up to 15 seconds of configured polling wait; RPC time and scheduling add their own delay. Six confirmations, receipt checks, fresh reorg anchors, independent reconciliation, and one-second full-range catch-up remain unchanged. The native updater preserves this optional setting. Stop workers, edit the private environment, run `sudo coin-bot config:clear`, and restart workers using the normal procedure. Avoid intervals exceeding worker-heartbeat thresholds without reviewing monitoring settings too.
+The default is 30 seconds. Changing 15 to 30 can add up to 15 seconds of configured polling wait; RPC time and scheduling add their own delay. Six confirmations, receipt checks, fresh reorg anchors, independent reconciliation, and one-second full-range catch-up remain unchanged. The native updater sets missing values and the old default of 15 to 30; other valid custom intervals are preserved. Stop workers, edit the private environment, run `sudo coin-bot config:clear`, and restart workers using the normal procedure. Avoid intervals exceeding worker-heartbeat thresholds without reviewing monitoring settings too.
 
 `tests/Feature/ApiBudgetSimulationTest.php` compares a fixed one-hour schedule with one address batch, 12-second Ethereum blocks, finalized advances of 32 blocks every 384 seconds, and no transfers. Finalized polling is fixed at 15 seconds for this model. Measured primary Alchemy usage:
 
@@ -82,7 +82,7 @@ The default remains 15 seconds. Changing 15 to 30 can add up to 15 seconds of co
 | Current | 15 seconds | 62,280 |
 | Current | 30 seconds | 35,880 |
 
-The code-only reduction in this scenario is 6.9%; the optional cadence reduces a further 42.4%. Known-span splitting has a separate 37.5% log-call reduction for a 100-block/10-block-limit query. These percentages describe different workloads and must not be added. The model excludes RPC latency, reconciliation, receipts, retries, backfills, reorg recovery and other consumers; it is not a production-day forecast or a guarantee of fitting the daily target. Compare fresh UTC usage deltas after deployment, including recovery reserve, against the actual provider dashboard.
+The code-only reduction in this scenario is 6.9%; the 30-second cadence reduces a further 42.4%. Known-span splitting has a separate 37.5% log-call reduction for a 100-block/10-block-limit query. These percentages describe different workloads and must not be added. The model excludes RPC latency, reconciliation, receipts, retries, backfills, reorg recovery and other consumers; it is not a production-day forecast or a guarantee of fitting the daily target. Compare fresh UTC usage deltas after deployment, including recovery reserve, against the actual provider dashboard.
 
 ## Permanent free candidate: Infura
 

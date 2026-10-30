@@ -8,6 +8,21 @@ use Tests\TestCase;
 
 class BlockchainConfigurationTest extends TestCase
 {
+    public function test_missing_early_poll_interval_defaults_to_thirty_seconds(): void
+    {
+        $program = <<<'PHP'
+        require 'vendor/autoload.php';
+        putenv('ETHEREUM_EARLY_INTERVAL_SECONDS');
+        unset($_ENV['ETHEREUM_EARLY_INTERVAL_SECONDS'], $_SERVER['ETHEREUM_EARLY_INTERVAL_SECONDS']);
+        $settings = require 'config/ethereum.php';
+        echo $settings['early_interval_seconds'];
+        PHP;
+        $process = new Process([PHP_BINARY, '-r', $program], base_path());
+        $process->mustRun();
+
+        $this->assertSame('30', $process->getOutput());
+    }
+
     #[DataProvider('historySettings')]
     public function test_bootstrapped_provider_configuration_distinguishes_unknown_history_from_genesis(string $setting, ?string $expected): void
     {

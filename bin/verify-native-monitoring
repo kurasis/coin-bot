@@ -128,7 +128,7 @@ $values=[
  'OPERATIONS_REQUIRED_WORKERS'=>'scan-ethereum,scan-tron,telegram-poll,telegram-deliver,backfill,backups,reconcile-ethereum,reconcile-tron,custom-probe-heartbeat',
  'TELEGRAM_BOT_TOKEN'=>'synthetic-native-monitoring-token','TELEGRAM_ALLOWED_USER_IDS'=>'990000001,990000002',
  'ETHEREUM_PRIMARY_RPC_URL'=>'https://primary.invalid','ETHEREUM_SECONDARY_RPC_URL'=>'https://secondary.invalid',
- 'ETHEREUM_EARLY_INTERVAL_SECONDS'=>'30',
+ 'ETHEREUM_EARLY_INTERVAL_SECONDS'=>'15',
  'TRON_PRIMARY_RPC_URL'=>'https://tron-primary.invalid/jsonrpc','TRON_PRIMARY_NATIVE_URL'=>'https://tron-primary.invalid',
  'TRON_SECONDARY_RPC_URL'=>'https://tron-secondary.invalid/jsonrpc','TRON_SECONDARY_NATIVE_URL'=>'https://tron-secondary.invalid',
 ];
@@ -419,6 +419,12 @@ chmod 0644 /tmp/coin-bot-assert-backup.php
 app_run /usr/bin/php8.5 /tmp/coin-bot-assert-backup.php >/tmp/coin-bot-backup-assertions.log 2>&1
 printf 'PASS: the authenticated encrypted pre-upgrade backup decrypts to the actual old schema and private rows.\n'
 
+stage=missing-early-interval
+app_run /usr/bin/php8.5 -r '$path="/home/www/coinbot/.env";$text=file_get_contents($path);$text=preg_replace("/^ETHEREUM_EARLY_INTERVAL_SECONDS=.*\\n/m","",$text);file_put_contents($path,$text);'
+bash "$updater" >/tmp/coin-bot-update.log 2>&1
+app_run /usr/bin/php8.5 /tmp/coin-bot-assert-state.php >/tmp/coin-bot-assertions.log 2>&1
+printf 'PASS: missing and old-default early polling settings upgrade to 30 seconds.\n'
+
 stage=idempotent-update
 env_hash="$(sha256sum .env | cut -d ' ' -f 1)"
 bash "$updater" >/tmp/coin-bot-update.log 2>&1
@@ -428,14 +434,14 @@ test ! -e /tmp/coin-bot-forbidden-operation
 printf 'PASS: rerunning the verified updater preserves selected settings and all original data.\n'
 
 stage=custom-api-settings
-app_run /usr/bin/php8.5 -r '$path="/home/www/coinbot/.env";$text=file_get_contents($path);$text=preg_replace("/^TRON_SCAN_MIN_INTERVAL_SECONDS=.*$/m","TRON_SCAN_MIN_INTERVAL_SECONDS=20",$text);$text=preg_replace("/^RECONCILIATION_RECHECK_SECONDS=.*$/m","RECONCILIATION_RECHECK_SECONDS=21600",$text);file_put_contents($path,$text);'
+app_run /usr/bin/php8.5 -r '$path="/home/www/coinbot/.env";$text=file_get_contents($path);$text=preg_replace("/^TRON_SCAN_MIN_INTERVAL_SECONDS=.*$/m","TRON_SCAN_MIN_INTERVAL_SECONDS=20",$text);$text=preg_replace("/^RECONCILIATION_RECHECK_SECONDS=.*$/m","RECONCILIATION_RECHECK_SECONDS=21600",$text);$text=preg_replace("/^ETHEREUM_EARLY_INTERVAL_SECONDS=.*$/m","ETHEREUM_EARLY_INTERVAL_SECONDS=45",$text);file_put_contents($path,$text);'
 custom_hash="$(sha256sum .env | cut -d ' ' -f 1)"
 bash "$updater" >/tmp/coin-bot-update.log 2>&1
 test "$custom_hash" = "$(sha256sum .env | cut -d ' ' -f 1)"
-app_run /usr/bin/php8.5 -r 'require "/home/www/coinbot/vendor/autoload.php";$app=require "/home/www/coinbot/bootstrap/app.php";$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();if(config("blockchain.chains.tron.scan_min_interval_seconds")!==20||config("reconciliation.recheck_after_seconds")!==21600){throw new RuntimeException("Custom API settings changed.");}'
-app_run /usr/bin/php8.5 -r '$path="/home/www/coinbot/.env";$text=file_get_contents($path);$text=preg_replace("/^TRON_SCAN_MIN_INTERVAL_SECONDS=.*$/m","TRON_SCAN_MIN_INTERVAL_SECONDS=15",$text);$text=preg_replace("/^RECONCILIATION_RECHECK_SECONDS=.*$/m","RECONCILIATION_RECHECK_SECONDS=43200",$text);file_put_contents($path,$text);'
+app_run /usr/bin/php8.5 -r 'require "/home/www/coinbot/vendor/autoload.php";$app=require "/home/www/coinbot/bootstrap/app.php";$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();if(config("blockchain.chains.tron.scan_min_interval_seconds")!==20||config("reconciliation.recheck_after_seconds")!==21600||(int)config("ethereum.early_interval_seconds")!==45){throw new RuntimeException("Custom API settings changed.");}'
+app_run /usr/bin/php8.5 -r '$path="/home/www/coinbot/.env";$text=file_get_contents($path);$text=preg_replace("/^TRON_SCAN_MIN_INTERVAL_SECONDS=.*$/m","TRON_SCAN_MIN_INTERVAL_SECONDS=15",$text);$text=preg_replace("/^RECONCILIATION_RECHECK_SECONDS=.*$/m","RECONCILIATION_RECHECK_SECONDS=43200",$text);$text=preg_replace("/^ETHEREUM_EARLY_INTERVAL_SECONDS=.*$/m","ETHEREUM_EARLY_INTERVAL_SECONDS=30",$text);file_put_contents($path,$text);'
 test "$env_hash" = "$(sha256sum .env | cut -d ' ' -f 1)"
-printf 'PASS: explicit custom TRON cadence and repeat-verification intervals survive an idempotent update.\n'
+printf 'PASS: explicit custom TRON, Ethereum early and repeat-verification intervals survive an idempotent update.\n'
 
 stage=shared-parent-races
 printf 'Private root canary; updater must never touch this file.\n' > /root/coin-bot-updater-canary

@@ -1,6 +1,6 @@
 # Faster Ethereum notifications and monitoring alerts
 
-Ethereum can send a **Preliminary** USDT notification after six subsequent blocks, targeting roughly **1-2 minutes after inclusion in a block** under normal conditions. This includes about 72 seconds for six normal Ethereum blocks plus the early worker's 15-second polling interval, RPC work, and Telegram delivery. It is not a delivery SLA and does not include time spent waiting in the mempool. Missed blocks, provider limits, outages, and a delivery backlog can increase the delay.
+Ethereum can send a **Preliminary** USDT notification after six subsequent blocks, targeting roughly **1-2 minutes after inclusion in a block** under normal conditions. This includes about 72 seconds for six normal Ethereum blocks plus the early worker's 30-second polling interval, RPC work, and Telegram delivery. It is not a delivery SLA and does not include time spent waiting in the mempool. Missed blocks, provider limits, outages, and a delivery backlog can increase the delay.
 
 The preliminary message says `not finalized`. Ethereum's finalized scan and independent reconciliation continue separately. TRON continues to notify from solidified state.
 
@@ -10,7 +10,7 @@ The new `.env.example` enables early Ethereum notifications. An existing install
 
 ```dotenv
 ETHEREUM_EARLY_ENABLED=true
-ETHEREUM_EARLY_INTERVAL_SECONDS=15
+ETHEREUM_EARLY_INTERVAL_SECONDS=30
 ETHEREUM_EARLY_CONFIRMATIONS=6
 ETHEREUM_EARLY_REORG_WINDOW=128
 
@@ -20,7 +20,7 @@ OPERATIONS_ALERT_MIN_OUTAGE_SECONDS=30
 OPERATIONS_ALERT_CHECK_INTERVAL_SECONDS=15
 ```
 
-`ETHEREUM_EARLY_INTERVAL_SECONDS` controls normal early polling without a service override. It defaults to 15 seconds; an explicit `ethereum:early-scan --interval=SECONDS` takes precedence. Setting it to 30 lowers RPC usage with up to 15 seconds of additional configured polling wait. Six confirmations and reorg checks remain unchanged. See the [measured API budget comparison](api-budget-controls.md#investigate-excessive-usage). Stop workers and clear cached configuration when changing it.
+`ETHEREUM_EARLY_INTERVAL_SECONDS` controls normal early polling without a service override. It defaults to 30 seconds; an explicit `ethereum:early-scan --interval=SECONDS` takes precedence. This lowers RPC usage with up to 15 seconds of additional configured polling wait compared with the old 15-second default. The native updater converts a missing value or the old value of 15 to 30 and preserves other valid custom intervals. Six confirmations and reorg checks remain unchanged. See the [measured API budget comparison](api-budget-controls.md#investigate-excessive-usage). Stop workers and clear cached configuration when changing it.
 
 `OPERATIONS_ALERT_USER_ID=1` means **internal application User ID 1**, not Telegram user ID `1`. Check the mapping with:
 
@@ -125,7 +125,7 @@ Install with the full ZIP's usual native monitoring updater while workers are st
 
 ## Worker and capacity
 
-The additional ninth native unit is `coin-bot@ethereum-early.service`, running `ethereum:early-scan` with a normal 15-second interval. Its health name is `scan-ethereum-early`; the native installer/updater adds it to `OPERATIONS_REQUIRED_WORKERS`. The existing `coin-bot start` command starts the complete target, including this unit. To inspect the early worker:
+The additional ninth native unit is `coin-bot@ethereum-early.service`, running `ethereum:early-scan` with a normal 30-second interval. Its health name is `scan-ethereum-early`; the native installer/updater adds it to `OPERATIONS_REQUIRED_WORKERS`. The existing `coin-bot start` command starts the complete target, including this unit. To inspect the early worker:
 
 ```bash
 sudo systemctl status coin-bot@ethereum-early.service

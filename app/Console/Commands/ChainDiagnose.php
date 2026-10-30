@@ -46,7 +46,7 @@ class ChainDiagnose extends Command
                 'resource_controls' => [
                     'reconciliation_recheck_seconds' => (int) config('reconciliation.recheck_after_seconds', 43200),
                     'scan_min_interval_seconds' => (int) config('blockchain.chains.'.$chain.'.scan_min_interval_seconds', 1),
-                    'ethereum_early_interval_seconds' => $chain === 'ethereum' ? (int) config('ethereum.early_interval_seconds', 15) : null,
+                    'ethereum_early_interval_seconds' => $chain === 'ethereum' ? (int) config('ethereum.early_interval_seconds', 30) : null,
                 ],
                 'providers' => [],
             ];
