@@ -58,6 +58,24 @@ class ChainDiagnoseTest extends TestCase
         Http::assertSentCount(6);
     }
 
+    public function test_offline_report_exposes_effective_query_limits_without_private_configuration(): void
+    {
+        config(['blockchain.chains.ethereum.providers.secondary.max_block_range' => 5,
+            'blockchain.chains.ethereum.providers.secondary.max_topic_addresses' => 50,
+            'reconciliation.recheck_after_seconds' => 900]);
+        $before = $this->snapshot();
+
+        [$status, $report, $output] = $this->diagnose('ethereum', ['--offline' => true]);
+
+        $this->assertSame(0, $status);
+        $this->assertSame(['max_block_range' => 5, 'max_topic_addresses' => 50], $report['providers']['secondary']['query_limits']);
+        $this->assertSame(900, $report['resource_controls']['reconciliation_recheck_seconds']);
+        $this->assertSame($before, $this->snapshot());
+        $this->assertStringNotContainsString('PRIVATE', $output);
+        $this->assertStringNotContainsString('provider.test', $output);
+        Http::assertNothingSent();
+    }
+
     #[DataProvider('httpFailures')]
     public function test_http_failures_are_precise_and_sanitized_without_opening_a_circuit(int $httpStatus, string $reason): void
     {

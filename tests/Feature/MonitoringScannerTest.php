@@ -16,12 +16,68 @@ use App\Monitoring\ScanException;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 use Tests\TestCase;
 
 class MonitoringScannerTest extends TestCase
 {
     use RefreshDatabase;
+
+    #[DataProvider('chains')]
+    public function test_idle_poll_reuses_its_fresh_finalized_head_as_the_durable_boundary(string $chain): void
+    {
+        $sender = $this->address($chain, 1);
+        $this->member('1001', $chain, $sender);
+        $client = $this->client($chain, $sender, $this->address($chain, 2));
+        $cursor = $this->initialize($client);
+        $scanner = new BlockScanner;
+        $scanner->scan($client);
+        $client->blockRequests = [];
+
+        $this->assertTrue($scanner->scan($client)->idle);
+        $this->assertSame([10], $client->blockRequests); // Head only; no duplicate numeric lookup.
+        $this->assertSame(10, DB::table('scan_cursors')->find($cursor)->last_block);
+
+        $client->head = 9; // A stale head cannot stand in for the stored boundary.
+        $client->blockRequests = [];
+        $this->assertTrue($scanner->scan($client)->idle);
+        $this->assertSame([9, 10], $client->blockRequests);
+    }
+
+    public static function chains(): array
+    {
+        return [['ethereum'], ['tron']];
+    }
+
+    #[DataProvider('chains')]
+    public function test_known_log_span_fills_requests_and_covers_the_final_partial_chunk(string $chain): void
+    {
+        $sender = $this->address($chain, 1);
+        $this->member('1001', $chain, $sender);
+        $client = $this->client($chain, $sender, $this->address($chain, 2));
+        $cursor = $this->initialize($client);
+        config(['blockchain.chains.'.$chain.'.providers.primary.max_block_range' => 10]);
+        $client->rangeLimit = 10;
+        $client->head = 106;
+
+        $result = (new BlockScanner)->scan($client);
+
+        $this->assertSame(1, $result->events);
+        $this->assertSame(106, DB::table('scan_cursors')->find($cursor)->last_block);
+        $this->assertDatabaseCount('notification_outbox', 1);
+        $this->assertCount(20, $client->queries); // Previously 32 admitted log requests.
+        foreach (['outgoing', 'incoming'] as $direction) {
+            $queries = array_values(array_filter($client->queries, fn (array $query): bool => $query['direction'] === $direction));
+            $expectedFrom = 10;
+            foreach ($queries as $query) {
+                $this->assertSame($expectedFrom, $query['from']);
+                $this->assertSame(min(106, $expectedFrom + 9), $query['to']);
+                $expectedFrom = $query['to'] + 1;
+            }
+            $this->assertSame(107, $expectedFrom);
+        }
+    }
 
     public function test_atomic_scan_preserves_full_receipt_positions_and_deduplicates_both_directions(): void
     {
@@ -455,6 +511,8 @@ class MonitoringFakeClient implements ChainClient
 
     public array $queries = [];
 
+    public array $blockRequests = [];
+
     public array $receipts;
 
     public array $log;
@@ -494,6 +552,8 @@ class MonitoringFakeClient implements ChainClient
 
     public function block(int $number): array
     {
+        $this->blockRequests[] = $number;
+
         return ['number' => $number, 'hash' => $this->hashOverride ?? '0x'.str_pad(dechex($number), 64, '0', STR_PAD_LEFT), 'timestamp' => 1793030400 + $number];
     }
 

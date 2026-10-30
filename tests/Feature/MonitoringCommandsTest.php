@@ -56,6 +56,17 @@ class MonitoringCommandsTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_early_poll_interval_uses_configuration_and_allows_an_explicit_cli_override(): void
+    {
+        config(['ethereum.early_enabled' => false, 'ethereum.early_interval_seconds' => 30]);
+        $this->artisan('ethereum:early-scan --once')->assertSuccessful();
+        config(['ethereum.early_interval_seconds' => 'invalid']);
+        $this->artisan('ethereum:early-scan --once')->assertFailed();
+        $this->artisan('ethereum:early-scan --once --interval=15')->assertSuccessful();
+        $this->artisan('ethereum:early-scan --once --interval=0')->assertFailed();
+        Http::assertNothingSent();
+    }
+
     public function test_intentional_pause_and_missing_setup_do_not_raise_api_alerts(): void
     {
         config(['ethereum.early_enabled' => true]);

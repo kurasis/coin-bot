@@ -10,6 +10,7 @@ The new `.env.example` enables early Ethereum notifications. An existing install
 
 ```dotenv
 ETHEREUM_EARLY_ENABLED=true
+ETHEREUM_EARLY_INTERVAL_SECONDS=15
 ETHEREUM_EARLY_CONFIRMATIONS=6
 ETHEREUM_EARLY_REORG_WINDOW=128
 
@@ -18,6 +19,8 @@ OPERATIONS_ALERT_FAILURE_THRESHOLD=3
 OPERATIONS_ALERT_MIN_OUTAGE_SECONDS=30
 OPERATIONS_ALERT_CHECK_INTERVAL_SECONDS=15
 ```
+
+`ETHEREUM_EARLY_INTERVAL_SECONDS` controls normal early polling without a service override. It defaults to 15 seconds; an explicit `ethereum:early-scan --interval=SECONDS` takes precedence. Setting it to 30 lowers RPC usage with up to 15 seconds of additional configured polling wait. Six confirmations and reorg checks remain unchanged. See the [measured API budget comparison](api-budget-controls.md#investigate-excessive-usage). Stop workers and clear cached configuration when changing it.
 
 `OPERATIONS_ALERT_USER_ID=1` means **internal application User ID 1**, not Telegram user ID `1`. Check the mapping with:
 

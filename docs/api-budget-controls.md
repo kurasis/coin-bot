@@ -6,6 +6,8 @@ This release applies the operator-approved resource controls without changing th
 
 - Automatic Alchemy profile: all Alchemy endpoints on this host share a default pacing group at 200 throughput CU/s. `eth_chainId` costs 5 throughput CU, headers/receipts 20, and `eth_getLogs` 60. Requests wait outside the shared file lock and outside application SQLite transactions. This pacing smooths this bot's requests; it does not control other applications or hosts using the same account. It does not enforce a monthly allowance.
 - Automatic free-tier query spans: Alchemy defaults to 10 blocks, QuickNode to 5, so recursive splitting happens locally before oversized parent requests are sent. Explicit `_MAX_BLOCK_RANGE` overrides are preserved.
+- Known query spans now use full-sized consecutive chunks instead of binary subdivision: 100 blocks with a 10-block limit require 20 log calls across both directions instead of 32. The final partial chunk is included. Unexpected payload/result limits still split, and an incomplete chunk prevents coverage from advancing.
+- Idle finalized scans reuse the current finalized-head response when it is the exact stored boundary. Early idle scans read the stored boundary once, without an additional confirmation-height lookup. These changes retain idle boundary mismatch detection and fresh before/after early checks around event collection; no headers are cached between cycles or providers.
 - Ordinary productive TRON scans start no more often than every 15 seconds, including time spent on RPC work. Idle scans retain their command interval. Full-range historical catch-up retains its faster one-second cadence. Added notification delay is at most the remaining configured cadence under normal operation; RPC or provider delays can add more.
 - Already verified ranges become eligible for repeat reconciliation after 12 hours instead of the old default 15 minutes. The first independent pass is unchanged. This trades slower detection of late indexer omissions for lower API usage. The existing 24-hour overlap still bounds repeat candidates; an old range may age out before another repeat if work is delayed.
 - The native updater enables local accounting, adds the TRON cadence if missing, and converts missing/old-default `RECONCILIATION_RECHECK_SECONDS=900` to `43200`. Other explicitly configured repeat intervals and valid custom TRON cadence values are preserved. Existing providers, credentials, history declarations and queues are preserved.
@@ -46,6 +48,41 @@ API_USAGE_ENABLED=true
 ```
 
 Profiles: `auto`, `alchemy`, `quicknode`, `infura`, `requests`. Rate units are throughput CU/s for Alchemy, credits/s for Infura, and requests/s for QuickNode/generic requests. A zero rate disables pacing for that group; a zero daily target disables target comparison. All consumers sharing an account group must use consistent pacing settings. Change configuration while workers are stopped, clear cached configuration and restart. Disabling `API_USAGE_ENABLED` also disables local pacing.
+
+## Investigate excessive usage
+
+Inspect effective settings without spending provider quota or revealing credentials:
+
+```bash
+sudo coin-bot chain:diagnose ethereum --offline
+sudo coin-bot chain:diagnose tron --offline
+```
+
+Each provider now reports `query_limits.max_block_range` and `max_topic_addresses`. `resource_controls` reports the configured repeat-reconciliation delay, minimum productive scan cadence, and Ethereum early polling interval. The minimum scan cadence is a floor, not the command's idle interval; an explicit early `--interval` overrides its environment setting. These are current settings, not the configuration that produced a past usage report.
+
+Check these causes before changing accounts or budgets:
+
+- An Infura secondary can retain a small explicit range from QuickNode. For a verified Infura account, the setup below uses `ETHEREUM_SECONDARY_MAX_BLOCK_RANGE=1000`. A retained value of 5 can multiply log calls on the same coverage. The updater preserves explicit provider limits; only increase one after checking that account's supported range. Oversized result/payload handling remains active.
+- Verify `RECONCILIATION_RECHECK_SECONDS=43200`. A shorter custom setting repeatedly queries already verified ranges. The first independent verification remains mandatory; reducing its frequency or dropping it is not an optimization in this release.
+- Preliminary Ethereum observations are an additional scan, including when no watched transfer occurs. Six confirmations do not eliminate the cost of polling, log filters and canonical boundary checks.
+
+An optional lower-cost cadence is now available through the private environment file:
+
+```dotenv
+ETHEREUM_EARLY_INTERVAL_SECONDS=30
+```
+
+The default remains 15 seconds. Changing 15 to 30 can add up to 15 seconds of configured polling wait; RPC time and scheduling add their own delay. Six confirmations, receipt checks, fresh reorg anchors, independent reconciliation, and one-second full-range catch-up remain unchanged. The native updater preserves this optional setting. Stop workers, edit the private environment, run `sudo coin-bot config:clear`, and restart workers using the normal procedure. Avoid intervals exceeding worker-heartbeat thresholds without reviewing monitoring settings too.
+
+`tests/Feature/ApiBudgetSimulationTest.php` compares a fixed one-hour schedule with one address batch, 12-second Ethereum blocks, finalized advances of 32 blocks every 384 seconds, and no transfers. Finalized polling is fixed at 15 seconds for this model. Measured primary Alchemy usage:
+
+| Implementation | Early interval | CU per model hour |
+| --- | --- | ---: |
+| Previous release (`c37ee0d`) | 15 seconds | 66,900 |
+| Current | 15 seconds | 62,280 |
+| Current | 30 seconds | 35,880 |
+
+The code-only reduction in this scenario is 6.9%; the optional cadence reduces a further 42.4%. Known-span splitting has a separate 37.5% log-call reduction for a 100-block/10-block-limit query. These percentages describe different workloads and must not be added. The model excludes RPC latency, reconciliation, receipts, retries, backfills, reorg recovery and other consumers; it is not a production-day forecast or a guarantee of fitting the daily target. Compare fresh UTC usage deltas after deployment, including recovery reserve, against the actual provider dashboard.
 
 ## Permanent free candidate: Infura
 
