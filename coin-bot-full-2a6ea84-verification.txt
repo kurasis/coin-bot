@@ -1,0 +1,30 @@
+Coin Bot full native release verification
+Source: 2a6ea84250991f0323a895b5a349a6d2670d6944
+Archive: coin-bot-full-2a6ea84.zip
+Bytes: 8917718
+SHA-256: 1533a24e5ad3fb3afe58074398ca142bc581d12e46e7ae17e2c89a572959f7fa
+
+Includes 74 locked production Composer dependencies and Composer itself.
+No local .env, credentials, database, logs or generated configuration caches.
+All 6116 manifest file hashes verified, plus the manifest in the ZIP.
+Runtime default ETHEREUM_EARLY_INTERVAL_SECONDS=30 confirmed.
+
+Completed verification:
+- Strict bin/verify: 484 tests, 2849 assertions, PHP 8.5.12.
+- Composer validation, Pint and SQLite durability checks passed.
+- GitHub CI passed, including Debian Bookworm/Trixie native installations.
+- Full ZIP integrity and relocated Composer autoload checks passed.
+- Actual archived application boot and memory-SQLite migrations passed.
+- bin/verify-native-monitoring against this exact ZIP passed.
+- Native fixture preserved legacy users, wallets, grants, queues, backup mode,
+  credentials, provider/history declarations, dependencies and existing sites.
+- Encrypted pre-upgrade backup decrypted to the actual old schema and rows.
+- Missing and old-default polling settings migrated to 30 seconds.
+- Custom early/TRON/recheck intervals and idempotent updates were preserved.
+- Shared-parent replacement-race tests passed.
+- One-command helper shell syntax passed.
+- Network-free helper fixtures passed download failure, checksum rejection,
+  update failure, startup failure and successful command ordering/cleanup.
+
+Systemctl, providers and recipients were simulated for native/update fixtures.
+No production server was updated. API savings require fresh live usage deltas.
