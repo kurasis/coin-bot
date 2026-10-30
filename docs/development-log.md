@@ -1,5 +1,11 @@
 # Development evidence
 
+## Lower-cost preliminary Ethereum polling default - 2026-10-30
+
+- Apply the user's selected 30-second early polling interval to the runtime default, environment template and offline diagnostics. Explicit CLI intervals still take precedence; six confirmations and fresh reorg verification are unchanged.
+- The native monitoring updater sets missing intervals and the old 15-second value to 30, while preserving other valid custom intervals. Both unprivileged configuration rendering and privileged output validation agree on the transition. Regression fixtures cover missing and old values, idempotency and preservation of a custom 45-second interval.
+- Strict `bin/verify` passed: **484 tests / 2849 assertions**, Composer, Pint and runtime/SQLite checks. The network-free native monitoring updater regression passed; no production server or recipient was accessed.
+
 ## RPC consumption reductions - 2026-10-30
 
 - Reuse a fresh finalized-head response only when it is the exact durable boundary, and omit the duplicate confirmation-height read on early idle checks. Idle hash mismatches still fail, and productive early collection retains fresh before/after reorg anchors.

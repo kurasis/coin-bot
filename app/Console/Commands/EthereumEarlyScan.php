@@ -25,7 +25,7 @@ final class EthereumEarlyScan extends Command
     public function handle(ChainClientFactory $factory, ResilientEarlyScanner $scanner, MonitoringCycle $cycles, MonitoringReadiness $readiness, MonitoringIncidentService $incidents, Heartbeat $heartbeat): int
     {
         $range = filter_var($this->option('range'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 10000]]);
-        $interval = filter_var($this->option('interval') ?? config('ethereum.early_interval_seconds', 15), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 3600]]);
+        $interval = filter_var($this->option('interval') ?? config('ethereum.early_interval_seconds', 30), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 3600]]);
         if ($range === false || $interval === false) {
             return self::INVALID;
         }

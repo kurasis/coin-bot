@@ -8,7 +8,8 @@
     "12bfcfa606d9bb995322f3d6727b4ad3d9361e7f",
     "d2e2e21e9e4c2df6e51e87f92e6617f57e138f11",
     "ad2e14dec446e2a300a03a14d9c3f3fe6b33c9c1",
-    "c37ee0dc7cfa317571157ab8e2dce33e03d96d01"
+    "c37ee0dc7cfa317571157ab8e2dce33e03d96d01",
+    "6bb977520aeee15790842481f98d72959b3e5694"
   ],
   "components": {
     "app/Blockchain/ChainClientFactory.php": {
@@ -46,7 +47,8 @@
       "required": false,
       "baseline_sha256": [
         "23f5b910e19c209a8ec3d6938c1d23e46e45aee160d814b699c16359ed65da34",
-        "8cd745513e0dcd1bc8e95d894777f47408b3cb2ae01b0349f04ae98b1bbe71c0"
+        "8cd745513e0dcd1bc8e95d894777f47408b3cb2ae01b0349f04ae98b1bbe71c0",
+        "fe1c7ec0cd479f7f15ee6252e292fe1f922015e89b658f0bd29909c5b7bbf097"
       ]
     },
     "app/Console/Commands/ChainReconcile.php": {
@@ -71,7 +73,8 @@
       "required": false,
       "baseline_sha256": [
         "1a94603d7117f6b447879bf84e689a4ebf6af3555029590164467b6eee78eca5",
-        "5c023e33d4afcc30ec2ef1c886322b84cfef4833154ec700d4075a3eeeb870cc"
+        "5c023e33d4afcc30ec2ef1c886322b84cfef4833154ec700d4075a3eeeb870cc",
+        "36d06b5baf6fcc44c9a2f5254096110ae3113a140e30b6e44314eb24385b8b10"
       ]
     },
     "app/Console/Commands/OpsApiUsage.php": {
@@ -265,7 +268,8 @@
       "mode": 420,
       "required": false,
       "baseline_sha256": [
-        "0c3249ad21cf3c9f778345f59bc37870c5ee9603a9484e286050c8366c89ed78"
+        "0c3249ad21cf3c9f778345f59bc37870c5ee9603a9484e286050c8366c89ed78",
+        "4bcbca3b800015f192308f03437036fc0ba901c138127ebdeab3e74480a112d7"
       ]
     },
     "config/operations.php": {
@@ -312,7 +316,8 @@
       "required": false,
       "baseline_sha256": [
         "d07daa973f1b8bdd899c79ef09f005ed7ef05bf54b61222cd458893974d6e2b3",
-        "a18c0553736ffcdda71b1f723e85bfbd19e6a7815f5f75b0c8350ac832cf0862"
+        "a18c0553736ffcdda71b1f723e85bfbd19e6a7815f5f75b0c8350ac832cf0862",
+        "6188c0358aaf245ca24f815654f5c479129ecc08e331f07efd6f61ab5f0def44"
       ]
     },
     "deploy/systemd/coin-bot.target": {

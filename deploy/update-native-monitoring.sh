@@ -339,8 +339,10 @@ function oldNumber(string $contents, string $key, int $default, int $minimum, in
 $tronInterval=oldNumber($before,"TRON_SCAN_MIN_INTERVAL_SECONDS",15,1,60);
 $recheck=oldNumber($before,"RECONCILIATION_RECHECK_SECONDS",43200,60,2147483647);
 if ($recheck===900) { $recheck=43200; }
+$earlyInterval=oldNumber($before,"ETHEREUM_EARLY_INTERVAL_SECONDS",30,1,3600);
+if ($earlyInterval===15) { $earlyInterval=30; }
 $values=["API_USAGE_ENABLED"=>"true","TRON_SCAN_MIN_INTERVAL_SECONDS"=>(string)$tronInterval,
-    "RECONCILIATION_RECHECK_SECONDS"=>(string)$recheck,"ETHEREUM_EARLY_ENABLED"=>"true","ETHEREUM_EARLY_CONFIRMATIONS"=>"6","ETHEREUM_EARLY_REORG_WINDOW"=>"128",
+    "RECONCILIATION_RECHECK_SECONDS"=>(string)$recheck,"ETHEREUM_EARLY_ENABLED"=>"true","ETHEREUM_EARLY_INTERVAL_SECONDS"=>(string)$earlyInterval,"ETHEREUM_EARLY_CONFIRMATIONS"=>"6","ETHEREUM_EARLY_REORG_WINDOW"=>"128",
     "OPERATIONS_ALERT_USER_ID"=>"1","OPERATIONS_ALERT_FAILURE_THRESHOLD"=>"3","OPERATIONS_ALERT_MIN_OUTAGE_SECONDS"=>"30",
     "OPERATIONS_ALERT_CHECK_INTERVAL_SECONDS"=>"15","OPERATIONS_REQUIRED_WORKERS"=>null];
 $cleanBefore=$before; $cleanRendered=$rendered;
